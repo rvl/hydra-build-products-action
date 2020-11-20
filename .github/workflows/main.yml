@@ -12,10 +12,7 @@ jobs:
         id: testhydra
         with:
           hydra: 'https://hydra.iohk.io'
-          jobs:
-            - cardano-wallet-linux64
-            - cardano-wallet-win64
-            - cardano-wallet-macos64
+          jobs: 'cardano-wallet-linux64 cardano-wallet-win64 cardano-wallet-macos64'
 
       - name: Get the results
         run: |

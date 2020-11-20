@@ -6,15 +6,15 @@ inputs:
     required: true
     default: 'https://hydra.iohk.io'
   jobs:
-    description: 'Array of job names to get'
+    description: 'Space-separated list of job names to get'
     required: false
-    default: []
+    default: ''
 
 outputs:
   eval:
     description: 'URL of eval'
   builds:
-    description: 'Array of builds corresponding to jobs'
+    description: 'Space-separated list of builds corresponding to jobs'
 runs:
   using: 'node12'
   main: 'index.js'

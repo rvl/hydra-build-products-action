@@ -130,7 +130,7 @@ function sleep(ms = 0) {
 
 try {
   const hydraURL = core.getInput('hydra');
-  const jobs = core.getInput('jobs');
+  const jobs = core.getInput('jobs').split(/ /);
 
   const payload = github.context.payload;
   console.log("payload", payload);
@@ -145,7 +145,7 @@ try {
   const res = await download(spec);
 
   core.setOutput("eval", res.eval);
-  core.setOutput("builds", res.builds);
+  core.setOutput("builds", res.builds.join(" "));
 } catch (error) {
   core.setFailed(error.message);
 }

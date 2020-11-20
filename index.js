@@ -91,15 +91,14 @@ async function findBuildsInEval(api, eval, jobs) {
   return builds;
 }
 
-async function downloadBuildProduct(hydraUrl, build, number) {
+async function downloadBuildProduct(hydraURL, build, number) {
   const buildProduct = build.buildproducts[number];
   const filename = buildProduct.name;
-  return `${hydraUrl}build/${build.id}/download/${number}/${filename}`;
+  return `${hydraURL}build/${build.id}/download/${number}/${filename}`;
 }
 
-async function download(downloadSpec, jobs, options = {}) {
-  const hydraUrl = "https://hydra.iohk.io/";
-  const hydraApi = makeHydraApi(hydraUrl, options);
+async function download(hydraURL, downloadSpec, jobs, options = {}) {
+  const hydraApi = makeHydraApi(hydraURL, options);
   const github = makeGitHubApi(options);
 
   const eval = await findEvalFromGitHub(hydraApi, github, downloadSpec.owner, downloadSpec.repo, downloadSpec.rev);
@@ -113,7 +112,7 @@ async function download(downloadSpec, jobs, options = {}) {
   for (let i = 0; i < downloads.length; i++) {
     const build = builds[downloads[i].job];
     for (let j = 0; j < downloads[i].buildProducts.length; j++) {
-      urls.push(downloadBuildProduct(hydraUrl, build, "" + downloads[i].buildProducts[j]));
+      urls.push(downloadBuildProduct(hydraURL, build, "" + downloads[i].buildProducts[j]));
     }
   }
 
@@ -128,7 +127,7 @@ function sleep(ms = 0) {
   return new Promise(r => setTimeout(r, ms));
 };
 
-try {
+async function main() {
   const hydraURL = core.getInput('hydra');
   const jobs = core.getInput('jobs').split(/ /);
 
@@ -142,10 +141,12 @@ try {
     jobs: _.map(jobs, name => { return { job: name, buildProducts: [1] }; })
   };
 
-  const res = await download(spec);
+  const res = await download(hydraURL, spec);
 
   core.setOutput("eval", res.eval);
   core.setOutput("builds", res.builds.join(" "));
-} catch (error) {
-  core.setFailed(error.message);
 }
+
+main()
+  .then(() => { console.log("done"); })
+  .catch(error => { core.setFailed(error.message); });

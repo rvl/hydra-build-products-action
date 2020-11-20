@@ -57,7 +57,7 @@ async function findEvalsFromGitHub(hydra, github, owner, repo, ref, page) {
 
   if (_.isEmpty(r.data)) {
     console.log(`No more pages from GitHub.`);
-    return null;
+    return [];
   }
 
   const statuses = _.filter(r.data, status => status.context.startsWith("ci/hydra-eval"));

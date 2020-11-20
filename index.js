@@ -51,40 +51,59 @@ function findCardanoWalletEval(api, rev) {
   return findEvalByCommit(apiapi, "Cardano", "cardano-wallet", rev);
 }
 
-async function findEvalFromGitHub(hydra, github, owner, repo, ref, page) {
-  const q = page ? ("?page=" + page) : "";
+async function findEvalsFromGitHub(hydra, github, owner, repo, ref, page) {
+  const q = "?per_page=100" + (page ? `&page=${page}` : "");
   const r = await github.get(`repos/${owner}/${repo}/commits/${ref}/statuses${q}`);
 
-  const status = _.find(r.data, { context: "ci/hydra-eval" });
+  if (_.isEmpty(r.data)) {
+    console.log(`No more pages from GitHub.`);
+    return null;
+  }
 
-  if (status) {
-    if (status.state === "success") {
-      const eval = await hydra.get(status.target_url);
-      return eval.data;
-    } else if (status.state === "pending") {
+  const statuses = _.filter(r.data, status => status.context.startsWith("ci/hydra-eval"));
+  const successful = _.filter(statuses, { state: "success" });
+  const pending = _.filter(statuses, { state: "pending" });
+  const failed = _.difference(statuses, successful, pending);
+
+  console.log(`Found ${statuses.length} eval statuses:  successful=${successful.length}  pending=${pending.length}  failed=${failed.length}`);
+
+  let evals = [];
+  for await (const status of successful) {
+    const eval = await hydra.get(status.target_url);
+    if (!_.isEmpty(eval.data)) {
+      evals.push(eval.data);
+    }
+  }
+
+  if (_.isEmpty(evals)) {
+    if (pending.length) {
        console.log("Eval is pending - trying again...");
        await sleep(1000);
-       return await findEvalFromGitHub(hydra, github, owner, repo, ref);
-    } else {
+       return await findEvalsFromGitHub(hydra, github, owner, repo, ref);
+    } else if (failed.length) {
       console.error("Can't get eval - it was not successful.");
       return null;
+    } else {
+      const next = (page || 1) + 1;
+      console.log(`Eval not found - trying page ${next}`);
+      return await findEvalsFromGitHub(hydra, github, owner, repo, ref, next);
     }
   } else {
-    const next = (page || 1) + 1;
-    console.log(`Eval not found - trying page ${next}`);
-    return await findEvalFromGitHub(hydra, github, owner, repo, ref, next);
+    return evals;
   }
 }
 
-async function findBuildsInEval(api, eval, jobs) {
+async function findBuildsInEvals(api, evals, jobs) {
   let builds = {};
-  for (let i = 0; i < eval.builds.length; i++) {
-    const r = await api.get(`build/${eval.builds[i]}`);
-    if (_.includes(jobs, r.data.job)) {
-      console.log(`Found ${r.data.job}`);
-      builds[r.data.job] = r.data;
-      if (_.size(builds) === _.size(jobs)) {
-        break;
+  for (const eval of evals) {
+    for (const build of eval.builds) {
+      const r = await api.get(`build/${build}`);
+      if (_.includes(jobs, r.data.job)) {
+        console.log(`Found ${r.data.job}`);
+        builds[r.data.job] = r.data;
+        if (_.size(builds) === _.size(jobs)) {
+          break;
+        }
       }
     }
   }
@@ -101,12 +120,12 @@ async function download(hydraURL, downloadSpec, jobs, options = {}) {
   const hydraApi = makeHydraApi(hydraURL, options);
   const github = makeGitHubApi(options);
 
-  const eval = await findEvalFromGitHub(hydraApi, github, downloadSpec.owner, downloadSpec.repo, downloadSpec.rev);
-  console.log(`Eval has ${eval.builds.length} builds`);
+  const evals = await findEvalsFromGitHub(hydraApi, github, downloadSpec.owner, downloadSpec.repo, downloadSpec.rev);
+  console.log(`${evals.length} eval(s) has ${_.sumBy(evals, eval => eval.builds.length)} builds`);
 
   const downloads = downloadSpec.jobs;
 
-  const builds = await findBuildsInEval(hydraApi, eval, _.map(downloads, "job"));
+  const builds = await findBuildsInEvals(hydraApi, evals, _.map(downloads, "job"));
 
   let urls = [];
   for (let i = 0; i < downloads.length; i++) {

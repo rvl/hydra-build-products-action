@@ -1,0 +1,23 @@
+on: [push]
+
+jobs:
+  test_job:
+    runs-on: ubuntu-latest
+    name: test test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Test hydra step
+        uses: ./
+        id: testhydra
+        with:
+          hydra: 'https://hydra.iohk.io'
+          jobs:
+            - cardano-wallet-linux64
+            - cardano-wallet-win64
+            - cardano-wallet-macos64
+
+      - name: Get the results
+        run: |
+          echo "eval is ${{ steps.testhydra.outputs.eval }}"
+          echo "builds are ${{ steps.testhydra.outputs.builds }}"

@@ -1,0 +1,20 @@
+name: 'Hydra CI Build'
+description: 'Wait for a Hydra build and get build products'
+inputs:
+  hydra:
+    description: 'URL of Hydra instance'
+    required: true
+    default: 'https://hydra.iohk.io'
+  jobs:
+    description: 'Array of job names to get'
+    required: false
+    default: []
+
+outputs:
+  eval:
+    description: 'URL of eval'
+  builds:
+    description: 'Array of builds corresponding to jobs'
+runs:
+  using: 'node12'
+  main: 'index.js'

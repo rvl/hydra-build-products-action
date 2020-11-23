@@ -108,10 +108,10 @@ async function waitForPendingEval(hydra, srcName, rev, pendings) {
     }
 
     const evalsURL = pending.target_url.replace(/#.*$/, "/evals");
-    const evals = await hydra.get(evalsURL);
-    console.log(JSON.stringify(evals.data));
-    console.log(`There are ${evals.data.evals.length} eval(s)`);
-    const eval = _.find(evals.data.evals, e => e.jobsetevalinputs[srcName] && e.jobsetevalinputs[srcName].revision === rev);
+    const jobsetEvals = await hydra.get(evalsURL);
+    console.log(JSON.stringify(jobsetEvals.data));
+    console.log(`There are ${jobsetEvals.data.evals.length} eval(s)`);
+    const eval = _.find(jobsetEvals.data.evals, e => e.jobsetevalinputs[srcName] && e.jobsetevalinputs[srcName].revision === rev);
     if (eval) {
       console.log("Found eval", eval);
       evals.push(eval);

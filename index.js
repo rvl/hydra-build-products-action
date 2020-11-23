@@ -161,17 +161,25 @@ async function download(hydraURL, downloadSpec, jobs, options = {}) {
   const builds = await findBuildsInEvals(hydraApi, evals, _.map(downloads, "job"));
 
   let urls = [];
-  for (let i = 0; i < downloads.length; i++) {
-    const build = builds[downloads[i].job];
-    for (let j = 0; j < downloads[i].buildProducts.length; j++) {
-      urls.push(downloadBuildProduct(hydraURL, build, "" + downloads[i].buildProducts[j]));
+
+  if (_.isEmpty(builds)) {
+    console.log("Didn't find any builds in evals.");
+  } else {
+    for (let i = 0; i < downloads.length; i++) {
+      const build = builds[downloads[i].job];
+      for (let j = 0; j < downloads[i].buildProducts.length; j++) {
+        urls.push(await downloadBuildProduct(hydraURL, build, "" + downloads[i].buildProducts[j]));
+      }
     }
   }
 
-  // fixme: not quite right
   return {
-    eval,
-    builds: urls
+    evalIDs: _.map(evals, "id"),
+    evalURLs: _.map(evals, eval => `${hydraURL}eval/${eval.id}`),
+    buildURLs: _.map(builds, build => `${hydraURL}build/${build.id}`),
+    buildProducts: urls,
+    builds: builds,
+    evals: evals
   };
 }
 
@@ -181,7 +189,7 @@ function sleep(ms = 0) {
 
 async function main() {
   const hydraURL = process.env.HYDRA_URL || core.getInput('hydra');
-  const jobs = process.env.HYDRA_JOBS || core.getInput('jobs').split(/ /);
+  const jobs = (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /);
   console.log("INPUT hydraURL:", hydraURL);
   console.log("INPUT jobs:", jobs);
 
@@ -197,11 +205,13 @@ async function main() {
 
   const res = await download(hydraURL, spec);
 
-  console.log("OUTPUT eval:", res.eval);
-  console.log("OUTPUT builds:", res.builds);
+  console.log("OUTPUT evals:", res.evalURLs);
+  console.log("OUTPUT builds:", res.buildURLs);
+  console.log("OUTPUT buildProducts:", res.buildProducts);
 
-  core.setOutput("eval", res.eval);
-  core.setOutput("builds", res.builds.join(" "));
+  core.setOutput("evals", res.evalURLs.join(" "));
+  core.setOutput("builds", res.buildURLs.join(" "));
+  core.setOutput("buildProducts", res.buildProducts.join(" "));
 }
 
 main()

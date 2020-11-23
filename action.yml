@@ -4,7 +4,7 @@ inputs:
   hydra:
     description: 'URL of Hydra instance'
     required: true
-    default: 'https://hydra.iohk.io'
+    default: 'https://hydra.iohk.io/'
   jobs:
     description: 'Space-separated list of job names to get'
     required: false
@@ -14,7 +14,10 @@ outputs:
   eval:
     description: 'URL of eval'
   builds:
-    description: 'Space-separated list of builds corresponding to jobs'
+    description: 'Space-separated list of build URLs corresponding to jobs'
+  buildProducts:
+    description: 'Space-separated list of build product download URLs from the builds'
+
 runs:
   using: 'node12'
   main: 'index.js'

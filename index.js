@@ -56,11 +56,15 @@ async function findEvalsFromGitHub(hydra, github, owner, repo, rev, page) {
   const q = "?per_page=100" + (page ? `&page=${page}` : "");
   const r = await github.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
 
-  if (_.isEmpty(r.data)) {
+  const retry = async () => {
     console.log(`Eval not found, and no more pages from GitHub.`);
     console.log(`Waiting for updated CI status.`);
-    await sleep(5000);
+    await sleep(60000);
     return await findEvalsFromGitHub(hydra, github, owner, repo, rev);
+  }
+
+  if (_.isEmpty(r.data)) {
+    return await retry();
   }
 
   const statuses = _.filter(r.data, status => status.context.startsWith("ci/hydra-eval"));
@@ -83,14 +87,17 @@ async function findEvalsFromGitHub(hydra, github, owner, repo, rev, page) {
   if (_.isEmpty(evals)) {
     if (pending.length) {
       console.log("Eval is pending - trying again...");
-      return waitForPendingEval(hydra, repo, rev, pending);
+      return await waitForPendingEval(hydra, repo, rev, pending);
     } else if (failed.length) {
       console.error("Can't get eval - it was not successful.");
       return null;
-    } else {
+    } else if (r.headers["Link"]) {
       const next = (page || 1) + 1;
       console.log(`Eval not found - trying page ${next}`);
       return await findEvalsFromGitHub(hydra, github, owner, repo, rev, next);
+    } else {
+      console.log(`Eval not found`);
+      return await retry();
     }
   } else {
     return evals;

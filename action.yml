@@ -1,5 +1,6 @@
 name: 'Hydra CI Build'
 description: 'Wait for a Hydra build and get build products'
+author: 'Rodney Lorrimar <rodney.lorrimar@iohk.io>'
 inputs:
   hydra:
     description: 'URL of Hydra instance'
@@ -20,4 +21,4 @@ outputs:
 
 runs:
   using: 'node12'
-  main: 'index.js'
+  main: 'dist/index.js'

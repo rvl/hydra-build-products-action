@@ -156,16 +156,16 @@ async function downloadBuildProduct(hydraURL, build, number) {
   return `${hydraURL}build/${build.id}/download/${number}/${filename}`;
 }
 
-async function download(hydraURL, downloadSpec, jobs, options = {}) {
+async function download(hydraURL, spec, downloads, jobs, options = {}) {
   const hydraApi = makeHydraApi(hydraURL, options);
   const github = makeGitHubApi(options);
 
-  const evals = await findEvalsFromGitHub(hydraApi, github, downloadSpec.owner, downloadSpec.repo, downloadSpec.rev);
+  const evals = await findEvalsFromGitHub(hydraApi, github, spec.owner, spec.repo, spec.rev);
   console.log(`${evals.length} eval(s) has ${_.sumBy(evals, eval => eval.builds.length)} builds`);
 
-  const downloads = downloadSpec.jobs;
-
   const builds = await findBuildsInEvals(hydraApi, evals, _.map(downloads, "job"));
+
+  // todo: poll the builds
 
   let urls = [];
 
@@ -194,31 +194,47 @@ function sleep(ms = 0) {
   return new Promise(r => setTimeout(r, ms));
 };
 
+function getActionInputs() {
+  return {
+    hydraURL: process.env.HYDRA_URL || core.getInput('hydra'),
+    jobs: (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /)
+  };
+}
+
+function setActionOutputs(res) {
+  core.setOutput("evals", res.evalURLs.join(" "));
+  core.setOutput("builds", res.buildURLs.join(" "));
+  core.setOutput("buildProducts", res.buildProducts.join(" "));
+}
+
+function getActionPayload() {
+  const payload = github.context.payload;
+  console.log("github payload:", payload);
+  return {
+    owner: process.env.REPO_OWNER || payload.repository.owner.login,
+    repo: process.env.REPO_NAME || payload.repository.name,
+    rev: process.env.COMMIT || payload.after
+  };
+}
+
 async function main() {
-  const hydraURL = process.env.HYDRA_URL || core.getInput('hydra');
-  const jobs = (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /);
+  const { hydraURL, jobs } = getActionInputs();
   console.log("INPUT hydraURL:", hydraURL);
   console.log("INPUT jobs:", jobs);
 
-  const payload = github.context.payload;
-  console.log("github payload:", payload);
+  const spec = getActionPayload();
 
-  const spec = {
-    owner: process.env.REPO_OWNER || payload.repository.owner.login,
-    repo: process.env.REPO_NAME || payload.repository.name,
-    rev: process.env.COMMIT || payload.after,
-    jobs: _.map(jobs, name => { return { job: name, buildProducts: [1] }; })
-  };
+  const buildProducts = _.map(jobs, name => {
+    return { job: name, buildProducts: [1] };
+  });
 
-  const res = await download(hydraURL, spec);
+  const res = await download(hydraURL, spec, buildProducts);
 
   console.log("OUTPUT evals:", res.evalURLs);
   console.log("OUTPUT builds:", res.buildURLs);
   console.log("OUTPUT buildProducts:", res.buildProducts);
 
-  core.setOutput("evals", res.evalURLs.join(" "));
-  core.setOutput("builds", res.buildURLs.join(" "));
-  core.setOutput("buildProducts", res.buildProducts.join(" "));
+  setActionOutputs(res);
 }
 
 main()

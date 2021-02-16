@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/rvl/hydra-build-products-action.git"
   },
   "keywords": [
     "actions",
@@ -26,7 +26,10 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@actions/core": "^1.2.6",
-    "axios": "^0.21.0",
+    "@actions/github": "^4.0.0",
+    "@types/axios": "^0.14.0",
+    "@types/lodash": "^4.14.168",
+    "axios": "^0.21.1",
     "lodash": "^4.17.20"
   },
   "devDependencies": {

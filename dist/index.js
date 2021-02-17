@@ -268,6 +268,7 @@ function hydra(hydraURL, spec, downloads, options = {}) {
             console.log("Waiting for builds to complete...");
         }
         const urls = yield Promise.all(lodash_1.default.map(downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
+        timings.built = new Date();
         return {
             evaluation,
             evalURL: (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? `${hydraURL}eval/${evaluation.id}` : undefined,
@@ -389,6 +390,7 @@ function run() {
             console.log("OUTPUT eval:", res.evalURL);
             console.log("OUTPUT builds:", res.buildURLs);
             console.log("OUTPUT buildProducts:", res.buildProductURLs);
+            console.log("OUTPUT timings:", res.timings);
             setActionOutputs(res);
         }
         catch (error) {

@@ -135,7 +135,7 @@ function findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page) {
         const evaluation = yield getGoodEval(successful.value());
         const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page);
         if (evaluation) {
-            console.log("Eval is successful");
+            console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
             return evaluation;
         }
         else if (statuses.isEmpty()) {
@@ -238,7 +238,7 @@ function hydraBuildPath(buildId) {
 }
 function hydraBuildURL(hydraApi, buildId) {
     const hydraURL = hydraApi.defaults.baseURL;
-    return `${hydraURL}build/${hydraBuildPath(buildId)}`;
+    return `${hydraURL}${hydraBuildPath(buildId)}`;
 }
 function hydraBuildProductDownloadURL(hydraApi, build, num) {
     const buildProduct = build.buildproducts[num];
@@ -259,10 +259,9 @@ function hydra(hydraURL, spec, downloads, options = {}) {
             console.error(msg);
             throw new Error(msg);
         }
-        console.log(`Eval ${evaluation.id} has ${evaluation.builds.length} builds`);
         timings.evaluated = new Date();
         const builds = yield findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(downloads, d => d.job));
-        if (lodash_1.default.isEmpty(builds)) {
+        if (lodash_1.default.isEmpty(builds) && !lodash_1.default.isEmpty(downloads)) {
             console.log("Didn't find any builds in evals.");
         }
         else {
@@ -349,8 +348,9 @@ const github = __importStar(__webpack_require__(5438));
 const lodash_1 = __importDefault(__webpack_require__(250));
 const hydra_1 = __webpack_require__(8458);
 function getActionInputs() {
+    const addSlash = (url) => url + (url.substr(-1) === '/' ? '' : '/');
     return {
-        hydraURL: process.env.HYDRA_URL || core.getInput('hydra'),
+        hydraURL: addSlash(process.env.HYDRA_URL || core.getInput('hydra')),
         jobs: (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /)
     };
 }
@@ -358,6 +358,7 @@ function setActionOutputs(res) {
     core.setOutput("eval", res.evalURL);
     core.setOutput("builds", res.buildURLs.join(" "));
     core.setOutput("buildProducts", res.buildProductURLs.join(" "));
+    core.setOutput("timings", JSON.stringify(lodash_1.default.mapValues(res.timings, d => d === null || d === void 0 ? void 0 : d.toISOString())));
 }
 function getActionPayload() {
     var _a, _b, _c;

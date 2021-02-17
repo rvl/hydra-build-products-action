@@ -281,6 +281,12 @@ function fullJobName(build: HydraBuild): string {
   return `${build.project}:${build.jobset}:${build.job}`;
 }
 
+function buildStatus(build: HydraBuild): string {
+  return !!build.finished
+    ? (build.buildstatus === 0 ? "succeeded" : "failed")
+    : (!!build.starttime ? "building" : "queued");
+}
+
 //////////////////////////////////////////////////////////////////////
 // Main action
 
@@ -364,7 +370,7 @@ async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildPro
       return [];
     }
   } else {
-    console.log(`${buildURL} (${job}) is not yet finished - retrying soon...`);
+    console.log(`${buildURL} (${job}) is ${buildStatus(build)} - retrying soon...`);
     await sleep(10000 + Math.floor(Math.random() * 5000));
     const refreshed = await fetchHydraBuild(hydraApi, build.id);
     return waitForBuild(hydraApi, refreshed.data, buildProducts);

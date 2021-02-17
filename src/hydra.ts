@@ -277,6 +277,10 @@ function hydraBuildProductDownloadURL(hydraApi: AxiosInstance, build: HydraBuild
   return `${hydraBuildURL(hydraApi, build.id)}/download/${num}/${filename}`;
 }
 
+function fullJobName(build: HydraBuild): string {
+  return `${build.project}:${build.jobset}:${build.job}`;
+}
+
 //////////////////////////////////////////////////////////////////////
 // Main action
 
@@ -348,16 +352,19 @@ export async function hydra(hydraURL: string, spec: Spec, downloads: Download[],
 }
 
 async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildProducts: number[]): Promise<string[]> {
+  const buildURL = hydraBuildURL(hydraApi, build.id);
+  const job = fullJobName(build);
+
   if (build.finished) {
-    console.log(`Hydra ${hydraBuildPath(build.id)} is finished.`);
+    console.log(`${buildURL} (${job}) is finished.`);
     if (build.buildstatus === 0) {
       return _.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
     } else {
-      console.log(`Build failed: ${hydraBuildURL(hydraApi, build.id)}/nixlog/1/tail`);
+      console.log(`Build failed: ${buildURL}/nixlog/1/tail`);
       return [];
     }
   } else {
-    console.log(`Hydra build/${build.id} is not yet finished - retrying soon...`);
+    console.log(`${buildURL} (${job}) is not yet finished - retrying soon...`);
     await sleep(10000 + Math.floor(Math.random() * 5000));
     const refreshed = await fetchHydraBuild(hydraApi, build.id);
     return waitForBuild(hydraApi, refreshed.data, buildProducts);

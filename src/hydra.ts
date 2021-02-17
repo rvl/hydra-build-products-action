@@ -268,7 +268,7 @@ function hydraBuildPath(buildId: number): string {
 
 function hydraBuildURL(hydraApi: AxiosInstance, buildId: number) {
   const hydraURL = <string>hydraApi.defaults.baseURL;
-  return `${hydraURL}build/${hydraBuildPath(buildId)}`;
+  return `${hydraURL}${hydraBuildPath(buildId)}`;
 }
 
 function hydraBuildProductDownloadURL(hydraApi: AxiosInstance, build: HydraBuild, num: string) {

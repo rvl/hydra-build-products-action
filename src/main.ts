@@ -9,8 +9,9 @@ import _ from 'lodash';
 import {hydra, Spec, Result, Download} from './hydra'
 
 function getActionInputs(): { hydraURL: string, jobs: string[] } {
+  const addSlash = (url: string) => url + (url.substr(-1) === '/' ? '' : '/');
   return {
-    hydraURL: process.env.HYDRA_URL || core.getInput('hydra'),
+    hydraURL: addSlash(process.env.HYDRA_URL || core.getInput('hydra')),
     jobs: (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /)
   };
 }

@@ -59,6 +59,7 @@ async function run(): Promise<void> {
     console.log("OUTPUT eval:", res.evalURL);
     console.log("OUTPUT builds:", res.buildURLs);
     console.log("OUTPUT buildProducts:", res.buildProductURLs);
+    console.log("OUTPUT timings:", res.timings);
 
     setActionOutputs(res);
   } catch (error) {

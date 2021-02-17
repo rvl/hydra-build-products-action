@@ -335,6 +335,8 @@ export async function hydra(hydraURL: string, spec: Spec, downloads: Download[],
 
   const urls = await Promise.all(_.map(downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
 
+  timings.built = new Date();
+
   return {
     evaluation,
     evalURL: evaluation?.id ? `${hydraURL}eval/${evaluation.id}` : undefined,

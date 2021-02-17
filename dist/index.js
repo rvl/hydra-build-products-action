@@ -88,67 +88,80 @@ function sleep(ms = 0) {
     return new Promise(r => setTimeout(r, ms));
 }
 ;
-function findEvalsFromGitHub(hydraApi, githubApi, spec, page) {
-    var e_1, _a;
+function findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page) {
     return __awaiter(this, void 0, void 0, function* () {
         const q = "?per_page=100" + (page ? `&page=${page}` : "");
         const { owner, repo, rev } = spec;
         const response = yield githubApi.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
-        const retry = () => __awaiter(this, void 0, void 0, function* () {
-            console.log(`Eval not found, and no more pages from GitHub.`);
-            console.log(`Waiting for updated CI status.`);
-            yield sleep(60000);
-            return yield findEvalsFromGitHub(hydraApi, githubApi, spec);
-        });
-        if (lodash_1.default.isEmpty(response.data)) {
-            return yield retry();
+        const statusName = "ci/hydra-eval";
+        const statuses = lodash_1.default(response.data).filter(status => status.context.startsWith(statusName)).sortBy("updated_at").reverse();
+        //console.log("statuses", JSON.stringify(statuses.value()));
+        if (!statuses.isEmpty()) {
+            onPending();
         }
-        const statuses = lodash_1.default.filter(response.data, status => status.context.startsWith("ci/hydra-eval"));
-        const successful = lodash_1.default.filter(statuses, { state: "success" });
-        const pending = lodash_1.default.filter(statuses, { state: "pending" });
-        const failed = lodash_1.default.difference(statuses, successful, pending);
-        console.log("statuses", JSON.stringify(statuses));
-        console.log(`Found ${statuses.length} eval statuses:  successful=${successful.length}  pending=${pending.length}  failed=${failed.length}`);
-        let evals = [];
-        try {
-            for (var successful_1 = __asyncValues(successful), successful_1_1; successful_1_1 = yield successful_1.next(), !successful_1_1.done;) {
-                const status = successful_1_1.value;
-                const evaluation = yield hydraApi.get(status.target_url);
-                if (!lodash_1.default.isEmpty(evaluation.data)) {
-                    evals.push(evaluation.data);
+        const successful = statuses.filter({ state: "success" });
+        const pending = statuses.filter({ state: "pending" });
+        const failed = statuses.difference(successful.value(), pending.value());
+        console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
+        // We can't simply take the latest succes status, because there are
+        // sometimes "ghost" evaluations with no builds.
+        const getGoodEval = (statuses) => { var statuses_1, statuses_1_1; return __awaiter(this, void 0, void 0, function* () {
+            var e_1, _a;
+            const isGoodEval = (status) => __awaiter(this, void 0, void 0, function* () {
+                var _b;
+                const response = yield hydraApi.get(status.target_url);
+                return lodash_1.default.isEmpty((_b = response.data) === null || _b === void 0 ? void 0 : _b.builds) ? null : response.data;
+            });
+            try {
+                for (statuses_1 = __asyncValues(statuses); statuses_1_1 = yield statuses_1.next(), !statuses_1_1.done;) {
+                    const status = statuses_1_1.value;
+                    const evaluation = yield isGoodEval(status);
+                    if (evaluation) {
+                        return evaluation;
+                    }
+                    else {
+                        console.log("Discarding ghost eval status", status);
+                    }
                 }
             }
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (statuses_1_1 && !statuses_1_1.done && (_a = statuses_1.return)) yield _a.call(statuses_1);
+                }
+                finally { if (e_1) throw e_1.error; }
+            }
+        }); };
+        const evaluation = yield getGoodEval(successful.value());
+        const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page);
+        if (evaluation) {
+            console.log("Eval is successful");
+            return evaluation;
         }
-        catch (e_1_1) { e_1 = { error: e_1_1 }; }
-        finally {
-            try {
-                if (successful_1_1 && !successful_1_1.done && (_a = successful_1.return)) yield _a.call(successful_1);
-            }
-            finally { if (e_1) throw e_1.error; }
-        }
-        if (lodash_1.default.isEmpty(evals)) {
-            if (pending.length) {
-                console.log("Eval is pending - trying again...");
-                return yield waitForPendingEval(hydraApi, spec, pending);
-            }
-            else if (failed.length) {
-                const msg = "Can't get eval - it was not successful.";
-                console.error(msg);
-                throw new Error(msg);
-            }
-            else if (response.headers["Link"]) {
+        else if (statuses.isEmpty()) {
+            if (response.headers["Link"]) {
                 const next = (page || 1) + 1;
                 console.log(`Eval not found - trying page ${next}`);
-                return yield findEvalsFromGitHub(hydraApi, githubApi, spec, next);
+                return yield retry(next);
             }
             else {
-                console.log(`Eval not found`);
-                return yield retry();
+                console.log(`Eval not found, and no more pages from GitHub - trying again from first page...`);
             }
         }
         else {
-            return evals;
+            if (!successful.isEmpty()) {
+                console.log("Need a real successful eval - trying again...");
+            }
+            else if (!pending.isEmpty()) {
+                console.log("Eval is pending - trying again...");
+            }
+            else {
+                console.log("Eval is currently failed - trying again...");
+            }
         }
+        console.log(`Waiting a minute for updated CI status.`);
+        yield sleep(60000);
+        return yield retry();
     });
 }
 function waitForPendingEval(hydraApi, spec, pendings) {
@@ -191,60 +204,102 @@ function waitForPendingEval(hydraApi, spec, pendings) {
         }
     });
 }
-function findBuildsInEvals(hydraApi, evals, jobs) {
+// todo: unused
+// async function findBuildsInEvals(hydraApi: AxiosInstance, evals: HydraEval[], jobs: string[]): Promise<HydraBuilds> {
+//   let builds: HydraBuilds = {};
+//   for (const evaluation of evals) {
+//     builds.assign(await findBuildsInEval(evaluation));
+//   }
+//   return builds;
+// }
+function fetchHydraBuild(hydraApi, buildId) {
+    return hydraApi.get(hydraBuildPath(buildId));
+}
+function findBuildsInEval(hydraApi, evaluation, jobs) {
     return __awaiter(this, void 0, void 0, function* () {
         let builds = {};
-        for (const evaluation of evals) {
-            for (const build of evaluation.builds) {
-                const response = yield hydraApi.get(`build/${build}`);
-                if (lodash_1.default.includes(jobs, response.data.job)) {
-                    console.log(`Found ${response.data.job}`);
-                    builds[response.data.job] = response.data;
-                    if (lodash_1.default.size(builds) === lodash_1.default.size(jobs)) {
-                        break;
-                    }
+        for (const buildId of evaluation.builds) {
+            const response = yield fetchHydraBuild(hydraApi, buildId);
+            const build = response.data;
+            if (lodash_1.default.includes(jobs, build.job)) {
+                console.log(`Found job ${build.job}`);
+                builds[build.job] = build;
+                if (lodash_1.default.size(builds) === lodash_1.default.size(jobs)) {
+                    console.log(`All jobs found`);
+                    break;
                 }
             }
         }
         return builds;
     });
 }
-function buildProductDownloadURL(hydraURL, build, num) {
+function hydraBuildPath(buildId) {
+    return `build/${buildId}`;
+}
+function hydraBuildURL(hydraApi, buildId) {
+    const hydraURL = hydraApi.defaults.baseURL;
+    return `${hydraURL}build/${hydraBuildPath(buildId)}`;
+}
+function hydraBuildProductDownloadURL(hydraApi, build, num) {
     const buildProduct = build.buildproducts[num];
     const filename = buildProduct.name;
-    return `${hydraURL}build/${build.id}/download/${num}/${filename}`;
+    return `${hydraBuildURL(hydraApi, build.id)}/download/${num}/${filename}`;
 }
 function hydra(hydraURL, spec, downloads, options = {}) {
     return __awaiter(this, void 0, void 0, function* () {
+        const timings = { actionStarted: new Date() };
+        const onPending = () => {
+            timings.ciStatusCreated = timings.ciStatusCreated || new Date();
+        };
         const hydraApi = makeHydraApi(hydraURL, options);
         const githubApi = makeGitHubApi(options);
-        const evals = yield findEvalsFromGitHub(hydraApi, githubApi, spec);
-        console.log(`${evals.length} eval(s) has ${lodash_1.default.sumBy(evals, e => e.builds.length)} builds`);
-        const builds = yield findBuildsInEvals(hydraApi, evals, lodash_1.default.map(downloads, d => d.job));
-        // todo: poll the builds
-        let urls = [];
+        const evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
+        if (!evaluation) {
+            const msg = "Couldn't get eval from GitHub status API.";
+            console.error(msg);
+            throw new Error(msg);
+        }
+        console.log(`Eval ${evaluation.id} has ${evaluation.builds.length} builds`);
+        timings.evaluated = new Date();
+        const builds = yield findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(downloads, d => d.job));
         if (lodash_1.default.isEmpty(builds)) {
             console.log("Didn't find any builds in evals.");
         }
         else {
-            for (let i = 0; i < downloads.length; i++) {
-                const build = builds[downloads[i].job];
-                for (let j = 0; j < downloads[i].buildProducts.length; j++) {
-                    urls.push(buildProductDownloadURL(hydraURL, build, "" + downloads[i].buildProducts[j]));
-                }
-            }
+            console.log("Waiting for builds to complete...");
         }
+        const urls = yield Promise.all(lodash_1.default.map(downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
         return {
-            evalIDs: lodash_1.default.map(evals, "id"),
-            evalURLs: lodash_1.default.map(evals, evaluation => `${hydraURL}eval/${evaluation.id}`),
-            buildURLs: lodash_1.default.map(builds, build => `${hydraURL}build/${build.id}`),
-            buildProducts: urls,
-            builds: builds,
-            evals: evals
+            evaluation,
+            evalURL: (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? `${hydraURL}eval/${evaluation.id}` : undefined,
+            builds,
+            buildURLs: lodash_1.default.map(builds, build => hydraBuildURL(hydraApi, build.id)),
+            buildProductURLs: lodash_1.default.flatten(urls),
+            timings
         };
     });
 }
 exports.hydra = hydra;
+function waitForBuild(hydraApi, build, buildProducts) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (build.finished) {
+            console.log(`Hydra ${hydraBuildPath(build.id)} is finished.`);
+            if (build.buildstatus === 0) {
+                return lodash_1.default.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
+            }
+            else {
+                console.log(`Build failed: ${hydraBuildURL(hydraApi, build.id)}/nixlog/1/tail`);
+                return [];
+            }
+        }
+        else {
+            console.log(`Hydra build/${build.id} is not yet finished - retrying soon...`);
+            yield sleep(10000 + Math.floor(Math.random() * 5000));
+            const refreshed = yield fetchHydraBuild(hydraApi, build.id);
+            return waitForBuild(hydraApi, refreshed.data, buildProducts);
+        }
+    });
+}
 
 
 /***/ }),
@@ -300,15 +355,15 @@ function getActionInputs() {
     };
 }
 function setActionOutputs(res) {
-    core.setOutput("evals", res.evalURLs.join(" "));
+    core.setOutput("eval", res.evalURL);
     core.setOutput("builds", res.buildURLs.join(" "));
-    core.setOutput("buildProducts", res.buildProducts.join(" "));
+    core.setOutput("buildProducts", res.buildProductURLs.join(" "));
 }
 function getActionPayload() {
     var _a, _b, _c;
     const payload = github.context.payload;
-    console.log("github payload:", payload);
     const bomb = (what) => {
+        console.log("github payload:", payload);
         throw new Error(`${what} missing from github payload`);
     };
     return {
@@ -330,9 +385,9 @@ function run() {
                 return { job: name, buildProducts: [1] };
             });
             const res = yield hydra_1.hydra(hydraURL, spec, downloads);
-            console.log("OUTPUT evals:", res.evalURLs);
+            console.log("OUTPUT eval:", res.evalURL);
             console.log("OUTPUT builds:", res.buildURLs);
-            console.log("OUTPUT buildProducts:", res.buildProducts);
+            console.log("OUTPUT buildProducts:", res.buildProductURLs);
             setActionOutputs(res);
         }
         catch (error) {

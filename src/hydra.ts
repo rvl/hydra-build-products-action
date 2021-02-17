@@ -327,7 +327,7 @@ export async function hydra(hydraURL: string, spec: Spec, downloads: Download[],
 
   const builds = await findBuildsInEval(hydraApi, evaluation, _.map(downloads, d => d.job));
 
-  if (_.isEmpty(builds)) {
+  if (_.isEmpty(builds) && !_.isEmpty(downloads)) {
     console.log("Didn't find any builds in evals.");
   } else {
     console.log("Waiting for builds to complete...");

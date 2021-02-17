@@ -18,6 +18,8 @@ outputs:
     description: 'Space-separated list of build URLs corresponding to jobs'
   buildProducts:
     description: 'Space-separated list of build product download URLs from the builds'
+  timings:
+    description: 'JSON object with build time observations'
 
 runs:
   using: 'node12'

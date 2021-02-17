@@ -19,6 +19,7 @@ function setActionOutputs(res: Result) {
   core.setOutput("eval", res.evalURL)
   core.setOutput("builds", res.buildURLs.join(" "));
   core.setOutput("buildProducts", res.buildProductURLs.join(" "));
+  core.setOutput("timings", JSON.stringify(_.mapValues(res.timings, d => d?.toISOString())));
 }
 
 function getActionPayload(): Spec {

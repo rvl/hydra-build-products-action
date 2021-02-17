@@ -248,6 +248,11 @@ function hydraBuildProductDownloadURL(hydraApi, build, num) {
 function fullJobName(build) {
     return `${build.project}:${build.jobset}:${build.job}`;
 }
+function buildStatus(build) {
+    return !!build.finished
+        ? (build.buildstatus === 0 ? "succeeded" : "failed")
+        : (!!build.starttime ? "building" : "queued");
+}
 function hydra(hydraURL, spec, downloads, options = {}) {
     return __awaiter(this, void 0, void 0, function* () {
         const timings = { actionStarted: new Date() };
@@ -298,7 +303,7 @@ function waitForBuild(hydraApi, build, buildProducts) {
             }
         }
         else {
-            console.log(`${buildURL} (${job}) is not yet finished - retrying soon...`);
+            console.log(`${buildURL} (${job}) is ${buildStatus(build)} - retrying soon...`);
             yield sleep(10000 + Math.floor(Math.random() * 5000));
             const refreshed = yield fetchHydraBuild(hydraApi, build.id);
             return waitForBuild(hydraApi, refreshed.data, buildProducts);

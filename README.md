@@ -2,8 +2,10 @@
   <a href="https://github.com/rvl/hydra-build-products-action/actions"><img alt="typescript-action status" src="https://github.com/rvl/hydra-build-products-action/workflows/build-test/badge.svg"></a>
 </p>
 
+# Download build products from Hydra CI
 
-
+This GitHub action waits for a Hydra build to evaluate and build, then
+provides download URLs of the given build products.
 
 ## Run the tests
 

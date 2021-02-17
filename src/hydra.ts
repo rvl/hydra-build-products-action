@@ -134,58 +134,72 @@ interface GitHubStatus {
   target_url: string;
 }
 
-async function findEvalsFromGitHub(hydraApi: AxiosInstance, githubApi: AxiosInstance, spec: Spec, page?: number): Promise<HydraEval[]> {
+async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: AxiosInstance, spec: Spec, onPending: () => void, page?: number): Promise<null|HydraEval> {
   const q = "?per_page=100" + (page ? `&page=${page}` : "");
   const {owner, repo, rev} = spec;
   const response: AxiosResponse<GitHubStatus[]> = await githubApi.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
 
-  const retry = async () => {
-    console.log(`Eval not found, and no more pages from GitHub.`);
-    console.log(`Waiting for updated CI status.`);
-    await sleep(60000);
-    return await findEvalsFromGitHub(hydraApi, githubApi, spec);
+  const statusName = "ci/hydra-eval";
+  const statuses = _(response.data).filter(status => status.context.startsWith(statusName)).sortBy("updated_at").reverse();
+
+  //console.log("statuses", JSON.stringify(statuses.value()));
+
+  if (!statuses.isEmpty()) {
+    onPending();
   }
 
-  if (_.isEmpty(response.data)) {
-    return await retry();
-  }
+  const successful = statuses.filter({ state: "success" });
+  const pending = statuses.filter({ state: "pending" });
+  const failed = statuses.difference(successful.value(), pending.value());
 
-  const statuses = _.filter(response.data, status => status.context.startsWith("ci/hydra-eval"));
-  const successful = _.filter(statuses, { state: "success" });
-  const pending = _.filter(statuses, { state: "pending" });
-  const failed = _.difference(statuses, successful, pending);
+  console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
 
-  console.log("statuses", JSON.stringify(statuses));
+  // We can't simply take the latest succes status, because there are
+  // sometimes "ghost" evaluations with no builds.
+  const getGoodEval = async (statuses: GitHubStatus[]) => {
+    const isGoodEval = async (status: GitHubStatus) => {
+      const response: AxiosResponse<HydraEval> = await hydraApi.get(status.target_url);
+      return _.isEmpty(response.data?.builds) ? null : response.data;
+    };
 
-  console.log(`Found ${statuses.length} eval statuses:  successful=${successful.length}  pending=${pending.length}  failed=${failed.length}`);
-
-  let evals = [];
-  for await (const status of successful) {
-    const evaluation = await hydraApi.get(status.target_url);
-    if (!_.isEmpty(evaluation.data)) {
-      evals.push(evaluation.data);
+    for await (const status of statuses) {
+      const evaluation = await isGoodEval(status);
+      if (evaluation) {
+        return evaluation;
+      } else {
+        console.log("Discarding ghost eval status", status);
+      }
     }
-  }
+  };
 
-  if (_.isEmpty(evals)) {
-    if (pending.length) {
-      console.log("Eval is pending - trying again...");
-      return await waitForPendingEval(hydraApi, spec, pending);
-    } else if (failed.length) {
-      const msg = "Can't get eval - it was not successful.";
-      console.error(msg);
-      throw new Error(msg);
-    } else if (response.headers["Link"]) {
+  const evaluation = await getGoodEval(successful.value());
+
+  const retry = (page?: number) => findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page);
+
+  if (evaluation) {
+    console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
+    return evaluation;
+  } else if (statuses.isEmpty()) {
+    if (response.headers["Link"]) {
       const next = (page || 1) + 1;
       console.log(`Eval not found - trying page ${next}`);
-      return await findEvalsFromGitHub(hydraApi, githubApi, spec, next);
+      return await retry(next);
     } else {
-      console.log(`Eval not found`);
-      return await retry();
+      console.log(`Eval not found, and no more pages from GitHub - trying again from first page...`);
     }
   } else {
-    return evals;
+    if (!successful.isEmpty()) {
+      console.log("Need a real successful eval - trying again...");
+    } else if (!pending.isEmpty()) {
+      console.log("Eval is pending - trying again...");
+    } else {
+      console.log("Eval is currently failed - trying again...");
+    }
   }
+
+  console.log(`Waiting a minute for updated CI status.`);
+  await sleep(60000);
+  return await retry();
 }
 
 async function waitForPendingEval(hydraApi: AxiosInstance, spec: Spec, pendings: GitHubStatus[]): Promise<HydraEval[]> {
@@ -218,27 +232,49 @@ async function waitForPendingEval(hydraApi: AxiosInstance, spec: Spec, pendings:
   }
 }
 
-async function findBuildsInEvals(hydraApi: AxiosInstance, evals: HydraEval[], jobs: string[]): Promise<HydraBuilds> {
+// todo: unused
+// async function findBuildsInEvals(hydraApi: AxiosInstance, evals: HydraEval[], jobs: string[]): Promise<HydraBuilds> {
+//   let builds: HydraBuilds = {};
+//   for (const evaluation of evals) {
+//     builds.assign(await findBuildsInEval(evaluation));
+//   }
+//   return builds;
+// }
+
+function fetchHydraBuild(hydraApi: AxiosInstance, buildId: number): Promise<AxiosResponse<HydraBuild>> {
+  return hydraApi.get(hydraBuildPath(buildId));
+}
+
+async function findBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, jobs: string[]): Promise<HydraBuilds> {
   let builds: HydraBuilds = {};
-  for (const evaluation of evals) {
-    for (const build of evaluation.builds) {
-      const response: AxiosResponse<HydraBuild> = await hydraApi.get(`build/${build}`);
-      if (_.includes(jobs, response.data.job)) {
-        console.log(`Found ${response.data.job}`);
-        builds[response.data.job] = response.data;
-        if (_.size(builds) === _.size(jobs)) {
-          break;
-        }
+  for (const buildId of evaluation.builds) {
+    const response: AxiosResponse<HydraBuild> = await fetchHydraBuild(hydraApi, buildId);
+    const build = response.data
+    if (_.includes(jobs, build.job)) {
+      console.log(`Found job ${build.job}`);
+      builds[build.job] = build
+      if (_.size(builds) === _.size(jobs)) {
+        console.log(`All jobs found`);
+        break;
       }
     }
   }
   return builds;
 }
 
-function buildProductDownloadURL(hydraURL: string, build: HydraBuild, num: string) {
+function hydraBuildPath(buildId: number): string {
+  return `build/${buildId}`;
+}
+
+function hydraBuildURL(hydraApi: AxiosInstance, buildId: number) {
+  const hydraURL = <string>hydraApi.defaults.baseURL;
+  return `${hydraURL}build/${hydraBuildPath(buildId)}`;
+}
+
+function hydraBuildProductDownloadURL(hydraApi: AxiosInstance, build: HydraBuild, num: string) {
   const buildProduct = build.buildproducts[num];
   const filename = buildProduct.name;
-  return `${hydraURL}build/${build.id}/download/${num}/${filename}`;
+  return `${hydraBuildURL(hydraApi, build.id)}/download/${num}/${filename}`;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -256,44 +292,72 @@ export interface Download {
 }
 
 export interface Result {
-  evalIDs: number[];
-  evalURLs: string[];
-  buildURLs: string[];
-  buildProducts: string[];
+  evaluation?: HydraEval;
+  evalURL?: string;
   builds: HydraBuilds;
-  evals: HydraEval[];
+  buildURLs: string[];
+  buildProductURLs: string[];
+  timings: Timings;
+}
+
+export interface Timings {
+  actionStarted: Date;
+  ciStatusCreated?: Date;
+  evaluated?: Date;
+  built?: Date;
 }
 
 export async function hydra(hydraURL: string, spec: Spec, downloads: Download[], options = {}): Promise<Result> {
+  const timings: Timings = { actionStarted: new Date() };
+  const onPending = () => {
+    timings.ciStatusCreated = timings.ciStatusCreated || new Date();
+  };
+
   const hydraApi = makeHydraApi(hydraURL, options);
   const githubApi = makeGitHubApi(options);
 
-  const evals = await findEvalsFromGitHub(hydraApi, githubApi, spec);
-  console.log(`${evals.length} eval(s) has ${_.sumBy(evals, e => e.builds.length)} builds`);
+  const evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
+  if (!evaluation) {
+    const msg = "Couldn't get eval from GitHub status API.";
+    console.error(msg);
+    throw new Error(msg);
+  }
 
-  const builds = await findBuildsInEvals(hydraApi, evals, _.map(downloads, d => d.job));
+  timings.evaluated = new Date();
 
-  // todo: poll the builds
-
-  let urls = [];
+  const builds = await findBuildsInEval(hydraApi, evaluation, _.map(downloads, d => d.job));
 
   if (_.isEmpty(builds)) {
     console.log("Didn't find any builds in evals.");
   } else {
-    for (let i = 0; i < downloads.length; i++) {
-      const build = builds[downloads[i].job];
-      for (let j = 0; j < downloads[i].buildProducts.length; j++) {
-        urls.push(buildProductDownloadURL(hydraURL, build, "" + downloads[i].buildProducts[j]));
-      }
-    }
+    console.log("Waiting for builds to complete...");
   }
 
+  const urls = await Promise.all(_.map(downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
+
   return {
-    evalIDs: _.map(evals, "id"),
-    evalURLs: _.map(evals, evaluation => `${hydraURL}eval/${evaluation.id}`),
-    buildURLs: _.map(builds, build => `${hydraURL}build/${build.id}`),
-    buildProducts: urls,
-    builds: builds,
-    evals: evals
+    evaluation,
+    evalURL: evaluation?.id ? `${hydraURL}eval/${evaluation.id}` : undefined,
+    builds,
+    buildURLs: _.map(builds, build => hydraBuildURL(hydraApi, build.id)),
+    buildProductURLs: _.flatten(urls),
+    timings
   };
+}
+
+async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildProducts: number[]): Promise<string[]> {
+  if (build.finished) {
+    console.log(`Hydra ${hydraBuildPath(build.id)} is finished.`);
+    if (build.buildstatus === 0) {
+      return _.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
+    } else {
+      console.log(`Build failed: ${hydraBuildURL(hydraApi, build.id)}/nixlog/1/tail`);
+      return [];
+    }
+  } else {
+    console.log(`Hydra build/${build.id} is not yet finished - retrying soon...`);
+    await sleep(10000 + Math.floor(Math.random() * 5000));
+    const refreshed = await fetchHydraBuild(hydraApi, build.id);
+    return waitForBuild(hydraApi, refreshed.data, buildProducts);
+  }
 }

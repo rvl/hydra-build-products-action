@@ -16,9 +16,9 @@ function getActionInputs(): { hydraURL: string, jobs: string[] } {
 }
 
 function setActionOutputs(res: Result) {
-  core.setOutput("evals", res.evalURLs.join(" "));
+  core.setOutput("eval", res.evalURL)
   core.setOutput("builds", res.buildURLs.join(" "));
-  core.setOutput("buildProducts", res.buildProducts.join(" "));
+  core.setOutput("buildProducts", res.buildProductURLs.join(" "));
 }
 
 function getActionPayload(): Spec {
@@ -54,9 +54,9 @@ async function run(): Promise<void> {
 
     const res = await hydra(hydraURL, spec, downloads);
 
-    console.log("OUTPUT evals:", res.evalURLs);
+    console.log("OUTPUT eval:", res.evalURL);
     console.log("OUTPUT builds:", res.buildURLs);
-    console.log("OUTPUT buildProducts:", res.buildProducts);
+    console.log("OUTPUT buildProducts:", res.buildProductURLs);
 
     setActionOutputs(res);
   } catch (error) {

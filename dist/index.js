@@ -245,6 +245,9 @@ function hydraBuildProductDownloadURL(hydraApi, build, num) {
     const filename = buildProduct.name;
     return `${hydraBuildURL(hydraApi, build.id)}/download/${num}/${filename}`;
 }
+function fullJobName(build) {
+    return `${build.project}:${build.jobset}:${build.job}`;
+}
 function hydra(hydraURL, spec, downloads, options = {}) {
     return __awaiter(this, void 0, void 0, function* () {
         const timings = { actionStarted: new Date() };
@@ -282,18 +285,20 @@ function hydra(hydraURL, spec, downloads, options = {}) {
 exports.hydra = hydra;
 function waitForBuild(hydraApi, build, buildProducts) {
     return __awaiter(this, void 0, void 0, function* () {
+        const buildURL = hydraBuildURL(hydraApi, build.id);
+        const job = fullJobName(build);
         if (build.finished) {
-            console.log(`Hydra ${hydraBuildPath(build.id)} is finished.`);
+            console.log(`${buildURL} (${job}) is finished.`);
             if (build.buildstatus === 0) {
                 return lodash_1.default.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
             }
             else {
-                console.log(`Build failed: ${hydraBuildURL(hydraApi, build.id)}/nixlog/1/tail`);
+                console.log(`Build failed: ${buildURL}/nixlog/1/tail`);
                 return [];
             }
         }
         else {
-            console.log(`Hydra build/${build.id} is not yet finished - retrying soon...`);
+            console.log(`${buildURL} (${job}) is not yet finished - retrying soon...`);
             yield sleep(10000 + Math.floor(Math.random() * 5000));
             const refreshed = yield fetchHydraBuild(hydraApi, build.id);
             return waitForBuild(hydraApi, refreshed.data, buildProducts);

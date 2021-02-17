@@ -23,9 +23,9 @@ function setActionOutputs(res: Result) {
 
 function getActionPayload(): Spec {
   const payload = github.context.payload;
-  console.log("github payload:", payload);
 
   const bomb = (what: string) => {
+    console.log("github payload:", payload);
     throw new Error(`${what} missing from github payload`);
   };
 

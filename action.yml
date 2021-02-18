@@ -7,17 +7,30 @@ inputs:
     required: true
     default: 'https://hydra.iohk.io/'
   jobs:
-    description: 'Space-separated list of job names to get'
+    description: 'Space-separated list of job names to get URLs for'
+    required: false
+    default: ''
+  evaluation:
+    description: 'Previously completed Hydra evaluation as JSON'
+    required: false
+    default: ''
+  builds:
+    description: 'Previously found Hydra builds as JSON'
     required: false
     default: ''
 
 outputs:
-  eval:
-    description: 'URL of eval'
-  builds:
+  evalURL:
+    description: 'Link to evaluation page on Hydra'
+  buildURLs:
     description: 'Space-separated list of build URLs corresponding to jobs'
   buildProducts:
     description: 'Space-separated list of build product download URLs from the builds'
+
+  evaluation:
+    description: 'Hydra evaluation as JSON'
+  builds:
+    description: 'Hydra builds as JSON'
   timings:
     description: 'JSON object with build time observations'
 

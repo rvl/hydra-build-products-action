@@ -30,7 +30,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.hydra = void 0;
+exports.hydra = exports.formatTimings = void 0;
 const axios_1 = __importDefault(__webpack_require__(6545));
 const lodash_1 = __importDefault(__webpack_require__(250));
 //////////////////////////////////////////////////////////////////////
@@ -253,7 +253,12 @@ function buildStatus(build) {
         ? (build.buildstatus === 0 ? "succeeded" : "failed")
         : (!!build.starttime ? "building" : "queued");
 }
-function hydra(hydraURL, spec, downloads, options = {}) {
+function formatTimings(timings) {
+    return lodash_1.default.mapValues(timings, d => d === null || d === void 0 ? void 0 : d.toISOString());
+}
+exports.formatTimings = formatTimings;
+function hydra(hydraURL, spec, downloads, evaluation, builds = {}, options = {}) {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const timings = { actionStarted: new Date() };
         const onPending = () => {
@@ -261,14 +266,28 @@ function hydra(hydraURL, spec, downloads, options = {}) {
         };
         const hydraApi = makeHydraApi(hydraURL, options);
         const githubApi = makeGitHubApi(options);
-        const evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
-        if (!evaluation) {
-            const msg = "Couldn't get eval from GitHub status API.";
-            console.error(msg);
-            throw new Error(msg);
+        if (lodash_1.default.isEmpty(evaluation)) {
+            for (const what in spec) {
+                if (what !== "payload" && !spec[what]) {
+                    console.log("github payload:", spec.payload);
+                    throw new Error(`${what} missing from github payload`);
+                }
+            }
+            evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
+            if (!evaluation) {
+                const msg = "Couldn't get eval from GitHub status API.";
+                console.error(msg);
+                throw new Error(msg);
+            }
+        }
+        else {
+            console.log(`Eval ${evaluation === null || evaluation === void 0 ? void 0 : evaluation.id} has ${(_a = evaluation === null || evaluation === void 0 ? void 0 : evaluation.builds) === null || _a === void 0 ? void 0 : _a.length} builds`);
         }
         timings.evaluated = new Date();
-        const builds = yield findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(downloads, d => d.job));
+        if (lodash_1.default.isEmpty(builds)) {
+            builds = yield findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(downloads, d => d.job));
+        }
+        timings.foundBuilds = new Date();
         if (lodash_1.default.isEmpty(builds) && !lodash_1.default.isEmpty(downloads)) {
             console.log("Didn't find any builds in evals.");
         }
@@ -292,18 +311,18 @@ function waitForBuild(hydraApi, build, buildProducts) {
     return __awaiter(this, void 0, void 0, function* () {
         const buildURL = hydraBuildURL(hydraApi, build.id);
         const job = fullJobName(build);
+        console.log(`${buildURL} (${job}) is ${buildStatus(build)}.`);
         if (build.finished) {
-            console.log(`${buildURL} (${job}) is finished.`);
             if (build.buildstatus === 0) {
                 return lodash_1.default.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
             }
             else {
-                console.log(`Build failed: ${buildURL}/nixlog/1/tail`);
+                console.log(`Build log here: ${buildURL}/nixlog/1/tail`);
                 return [];
             }
         }
         else {
-            console.log(`${buildURL} (${job}) is ${buildStatus(build)} - retrying soon...`);
+            console.log(`Retrying shortly...`);
             yield sleep(10000 + Math.floor(Math.random() * 5000));
             const refreshed = yield fetchHydraBuild(hydraApi, build.id);
             return waitForBuild(hydraApi, refreshed.data, buildProducts);
@@ -358,49 +377,91 @@ const core = __importStar(__webpack_require__(2186));
 const github = __importStar(__webpack_require__(5438));
 const lodash_1 = __importDefault(__webpack_require__(250));
 const hydra_1 = __webpack_require__(8458);
-function getActionInputs() {
-    const addSlash = (url) => url + (url.substr(-1) === '/' ? '' : '/');
-    return {
-        hydraURL: addSlash(process.env.HYDRA_URL || core.getInput('hydra')),
-        jobs: (process.env.HYDRA_JOBS || core.getInput('jobs')).split(/ /)
-    };
-}
-function setActionOutputs(res) {
-    core.setOutput("eval", res.evalURL);
-    core.setOutput("builds", res.buildURLs.join(" "));
-    core.setOutput("buildProducts", res.buildProductURLs.join(" "));
-    core.setOutput("timings", JSON.stringify(lodash_1.default.mapValues(res.timings, d => d === null || d === void 0 ? void 0 : d.toISOString())));
-}
+//////////////////////////////////////////////////////////////////////
+// GitHub event context
 function getActionPayload() {
-    var _a, _b, _c;
-    const payload = github.context.payload;
-    const bomb = (what) => {
-        console.log("github payload:", payload);
-        throw new Error(`${what} missing from github payload`);
-    };
+    var _a, _b, _c, _d;
+    const payload = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.payload;
     return {
-        owner: process.env.REPO_OWNER || ((_b = (_a = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _a === void 0 ? void 0 : _a.owner) === null || _b === void 0 ? void 0 : _b.login) || bomb("owner"),
-        repo: process.env.REPO_NAME || ((_c = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _c === void 0 ? void 0 : _c.name) || bomb("repo"),
-        rev: process.env.COMMIT || (payload === null || payload === void 0 ? void 0 : payload.after) || bomb("rev")
+        owner: process.env.REPO_OWNER || ((_c = (_b = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _b === void 0 ? void 0 : _b.owner) === null || _c === void 0 ? void 0 : _c.login) || "",
+        repo: process.env.REPO_NAME || ((_d = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _d === void 0 ? void 0 : _d.name) || "",
+        rev: process.env.COMMIT || (payload === null || payload === void 0 ? void 0 : payload.after) || "",
+        payload
     };
 }
+function getActionInputs() {
+    const addTraillingSlash = (url) => url + (url.substr(-1) === '/' ? '' : '/');
+    const json = (text) => {
+        try {
+            return text ? JSON.parse(text) : undefined;
+        }
+        catch (e) {
+            return e;
+        }
+    };
+    const actionInputs = {
+        hydra: {
+            env: "HYDRA_URL",
+            parse: addTraillingSlash
+        },
+        jobs: {
+            env: "HYDRA_JOBS",
+            parse: (jobs) => jobs.split(/ /)
+        },
+        evaluation: {
+            env: "HYDRA_EVAL_JSON",
+            parse: json
+        },
+        builds: {
+            env: "HYDRA_BUILDS_JSON",
+            parse: json
+        }
+    };
+    const getActionInput = ({ env, parse }, inputName) => parse(process.env[env] || core.getInput(inputName));
+    const params = lodash_1.default.mapValues(actionInputs, getActionInput);
+    for (const inputName in params) {
+        console.log(`INPUT ${inputName}:`, params[inputName]);
+    }
+    for (const inputName in params) {
+        if (params[inputName] instanceof Error) {
+            throw params[inputName];
+        }
+    }
+    return params;
+}
+//////////////////////////////////////////////////////////////////////
+// Action Outputs
+function setActionOutputs(res) {
+    const outputs = makeActionOutputs(res);
+    for (const outputName in outputs) {
+        console.log(`OUTPUT ${outputName}: ${outputs[outputName]}`);
+        core.setOutput(outputName, outputs[outputName]);
+    }
+}
+function makeActionOutputs(res) {
+    const json = (obj) => obj ? JSON.stringify(obj) : "";
+    return {
+        evalURL: res.evalURL || "",
+        buildURLs: res.buildURLs.join(" "),
+        buildProducts: res.buildProductURLs.join(" "),
+        evaluation: json(res.evaluation),
+        builds: json(res.builds),
+        timings: json(hydra_1.formatTimings(res.timings))
+    };
+}
+//////////////////////////////////////////////////////////////////////
+// Main function
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
+            // debug is only shown if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug("rvl/hydra-build-products-action");
-            const { hydraURL, jobs } = getActionInputs();
-            console.log("INPUT hydraURL:", hydraURL);
-            console.log("INPUT jobs:", jobs);
+            const params = getActionInputs();
             const spec = getActionPayload();
-            const downloads = lodash_1.default.map(jobs, (name) => {
+            const downloads = lodash_1.default.map(params.jobs, (name) => {
                 return { job: name, buildProducts: [1] };
             });
-            const res = yield hydra_1.hydra(hydraURL, spec, downloads);
-            console.log("OUTPUT eval:", res.evalURL);
-            console.log("OUTPUT builds:", res.buildURLs);
-            console.log("OUTPUT buildProducts:", res.buildProductURLs);
-            console.log("OUTPUT timings:", res.timings);
+            const res = yield hydra_1.hydra(params.hydra, spec, downloads, params.evaluation, params.builds);
             setActionOutputs(res);
         }
         catch (error) {

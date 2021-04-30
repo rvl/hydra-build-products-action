@@ -17,11 +17,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Checkout Target
+        uses: actions/checkout@v2
         with:
           repository: "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}"
+          path: target
 
       - name: Set commit variable
         run: |
+          cd target
           echo COMMIT=$(git rev-parse refs/heads/master | head -c -1) >> $GITHUB_ENV
 
       - name: Test hydra step

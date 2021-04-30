@@ -1,6 +1,8 @@
 on:
   pull_request:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
 
@@ -16,7 +18,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          repository: "${{ env.REPO_OWNER }}/${ env.REPO_NAME }}"
+          repository: "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}"
 
       - name: Set commit variable
         run: |

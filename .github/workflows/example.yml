@@ -1,3 +1,5 @@
+name: example
+
 on:
   pull_request:
   push:

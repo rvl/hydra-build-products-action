@@ -18,7 +18,7 @@ function getActionPayload(): Spec {
   return {
     owner: process.env.REPO_OWNER || payload?.repository?.owner?.login || "",
     repo: process.env.REPO_NAME || payload?.repository?.name || "",
-    rev: process.env.COMMIT || payload?.after || "",
+    rev: process.env.COMMIT || payload?.head_commit?.id || payload?.after || "",
     payload
   };
 }

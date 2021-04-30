@@ -13,6 +13,7 @@ import {hydra, Spec, Result, Download, formatTimings, HydraEval, HydraBuilds} fr
 
 function getActionPayload(): Spec {
   const payload = github?.context?.payload;
+  console.debug("payload", payload);
 
   return {
     owner: process.env.REPO_OWNER || payload?.repository?.owner?.login || "",
@@ -36,6 +37,7 @@ interface Params {
   jobs: string[];
   evaluation: HydraEval;
   builds: HydraBuilds;
+  statusName: string;
 }
 
 function getActionInputs(): Params {
@@ -52,6 +54,10 @@ function getActionInputs(): Params {
     hydra: {
       env: "HYDRA_URL",
       parse: addTraillingSlash
+    },
+    statusName: {
+      env: "HYDRA_EVAL_STATUS_NAME",
+      parse: (str: string) => str
     },
     jobs: {
       env: "HYDRA_JOBS",
@@ -127,7 +133,7 @@ async function run(): Promise<void> {
       return { job: name, buildProducts: [1] };
     });
 
-    const res = await hydra(params.hydra, spec, downloads, params.evaluation, params.builds);
+    const res = await hydra(params.hydra, params.statusName, spec, downloads, params.evaluation, params.builds);
 
     setActionOutputs(res);
   } catch (error) {

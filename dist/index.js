@@ -88,12 +88,11 @@ function sleep(ms = 0) {
     return new Promise(r => setTimeout(r, ms));
 }
 ;
-function findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page) {
+function findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending, page) {
     return __awaiter(this, void 0, void 0, function* () {
         const q = "?per_page=100" + (page ? `&page=${page}` : "");
         const { owner, repo, rev } = spec;
         const response = yield githubApi.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
-        const statusName = "ci/hydra-eval";
         const statuses = lodash_1.default(response.data).filter(status => status.context.startsWith(statusName)).sortBy("updated_at").reverse();
         //console.log("statuses", JSON.stringify(statuses.value()));
         if (!statuses.isEmpty()) {
@@ -133,7 +132,7 @@ function findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page) {
             }
         }); };
         const evaluation = yield getGoodEval(successful.value());
-        const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page);
+        const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending, page);
         if (evaluation) {
             console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
             return evaluation;
@@ -257,7 +256,7 @@ function formatTimings(timings) {
     return lodash_1.default.mapValues(timings, d => d === null || d === void 0 ? void 0 : d.toISOString());
 }
 exports.formatTimings = formatTimings;
-function hydra(hydraURL, spec, downloads, evaluation, builds = {}, options = {}) {
+function hydra(hydraURL, statusName, spec, downloads, evaluation, builds = {}, options = {}) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const timings = { actionStarted: new Date() };
@@ -273,7 +272,7 @@ function hydra(hydraURL, spec, downloads, evaluation, builds = {}, options = {})
                     throw new Error(`${what} missing from github payload`);
                 }
             }
-            evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
+            evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending);
             if (!evaluation) {
                 const msg = "Couldn't get eval from GitHub status API.";
                 console.error(msg);
@@ -384,6 +383,7 @@ const hydra_1 = __webpack_require__(8458);
 function getActionPayload() {
     var _a, _b, _c, _d;
     const payload = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.payload;
+    console.debug("payload", payload);
     return {
         owner: process.env.REPO_OWNER || ((_c = (_b = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _b === void 0 ? void 0 : _b.owner) === null || _c === void 0 ? void 0 : _c.login) || "",
         repo: process.env.REPO_NAME || ((_d = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _d === void 0 ? void 0 : _d.name) || "",
@@ -405,6 +405,10 @@ function getActionInputs() {
         hydra: {
             env: "HYDRA_URL",
             parse: addTraillingSlash
+        },
+        statusName: {
+            env: "HYDRA_EVAL_STATUS_NAME",
+            parse: (str) => str
         },
         jobs: {
             env: "HYDRA_JOBS",
@@ -463,7 +467,7 @@ function run() {
             const downloads = lodash_1.default.map(params.jobs, (name) => {
                 return { job: name, buildProducts: [1] };
             });
-            const res = yield hydra_1.hydra(params.hydra, spec, downloads, params.evaluation, params.builds);
+            const res = yield hydra_1.hydra(params.hydra, params.statusName, spec, downloads, params.evaluation, params.builds);
             setActionOutputs(res);
         }
         catch (error) {

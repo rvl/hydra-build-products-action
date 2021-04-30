@@ -32,6 +32,12 @@ We use it in [`cardano-wallet/.github/workflows/windows.yml`](https://github.com
 
 Sets the URL of your Hydra instance. Defaults to https://hydra.iohk.io/.
 
+### `statusName : String` - GitHub CI status
+
+The name of the GitHub CI status posted by Hydra when evaluation
+finishes. This action will poll the given status to get an evaluation
+URL. Defaults to `"ci/hydra-eval"`.
+
 ### `jobs : [String]` - (Optional) Required job names
 
 An optional space-separate list of job names to get information for.

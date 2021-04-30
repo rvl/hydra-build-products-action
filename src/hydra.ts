@@ -134,12 +134,11 @@ interface GitHubStatus {
   target_url: string;
 }
 
-async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: AxiosInstance, spec: Spec, onPending: () => void, page?: number): Promise<HydraEval|undefined> {
+async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: AxiosInstance, statusName: string, spec: Spec, onPending: () => void, page?: number): Promise<HydraEval|undefined> {
   const q = "?per_page=100" + (page ? `&page=${page}` : "");
   const {owner, repo, rev} = spec;
   const response: AxiosResponse<GitHubStatus[]> = await githubApi.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
 
-  const statusName = "ci/hydra-eval";
   const statuses = _(response.data).filter(status => status.context.startsWith(statusName)).sortBy("updated_at").reverse();
 
   //console.log("statuses", JSON.stringify(statuses.value()));
@@ -174,7 +173,7 @@ async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: Axio
 
   const evaluation = await getGoodEval(successful.value());
 
-  const retry = (page?: number) => findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending, page);
+  const retry = (page?: number) => findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending, page);
 
   if (evaluation) {
     console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
@@ -323,7 +322,7 @@ export function formatTimings(timings: Timings) {
   return _.mapValues(timings, d => d?.toISOString());
 }
 
-export async function hydra(hydraURL: string, spec: Spec, downloads: Download[], evaluation?: HydraEval, builds: HydraBuilds = {}, options = {}): Promise<Result> {
+export async function hydra(hydraURL: string, statusName: string, spec: Spec, downloads: Download[], evaluation?: HydraEval, builds: HydraBuilds = {}, options = {}): Promise<Result> {
   const timings: Timings = { actionStarted: new Date() };
   const onPending = () => {
     timings.ciStatusCreated = timings.ciStatusCreated || new Date();
@@ -340,7 +339,7 @@ export async function hydra(hydraURL: string, spec: Spec, downloads: Download[],
       }
     }
 
-    evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, spec, onPending);
+    evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending);
     if (!evaluation) {
       const msg = "Couldn't get eval from GitHub status API.";
       console.error(msg);

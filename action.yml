@@ -6,6 +6,10 @@ inputs:
     description: 'URL of Hydra instance'
     required: true
     default: 'https://hydra.iohk.io/'
+  statusName:
+    description: 'The GitHub CI status posted by Hydra when evaluation finishes.'
+    required: true
+    default: 'ci/hydra-eval'
   jobs:
     description: 'Space-separated list of job names to get URLs for'
     required: false

@@ -25,7 +25,7 @@ jobs:
           npm run package
       - name: Update
         run: |
-          git config --global user.name 'GitHub Actions
+          git config --global user.name 'GitHub Actions'
           git config --global user.email 'rvl@users.noreply.github.com'
           if git commit -am "Rebuild dist/index.js"; then
             git push

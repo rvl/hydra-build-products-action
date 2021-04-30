@@ -380,13 +380,13 @@ const hydra_1 = __nccwpck_require__(8458);
 //////////////////////////////////////////////////////////////////////
 // GitHub event context
 function getActionPayload() {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     const payload = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.payload;
     console.debug("payload", payload);
     return {
         owner: process.env.REPO_OWNER || ((_c = (_b = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _b === void 0 ? void 0 : _b.owner) === null || _c === void 0 ? void 0 : _c.login) || "",
         repo: process.env.REPO_NAME || ((_d = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _d === void 0 ? void 0 : _d.name) || "",
-        rev: process.env.COMMIT || ((_e = payload === null || payload === void 0 ? void 0 : payload.head_commit) === null || _e === void 0 ? void 0 : _e.id) || (payload === null || payload === void 0 ? void 0 : payload.after) || "",
+        rev: process.env.COMMIT || ((_e = payload === null || payload === void 0 ? void 0 : payload.head_commit) === null || _e === void 0 ? void 0 : _e.id) || (payload === null || payload === void 0 ? void 0 : payload.after) || ((_g = (_f = payload === null || payload === void 0 ? void 0 : payload.pull_request) === null || _f === void 0 ? void 0 : _f.head) === null || _g === void 0 ? void 0 : _g.sha) || "",
         payload
     };
 }

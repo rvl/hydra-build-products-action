@@ -1,12 +1,27 @@
-on: [push]
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   test_job:
     runs-on: ubuntu-latest
     name: test test
+    env:
+      REPO_OWNER: input-output-hk
+      REPO_NAME: cardano-wallet
+
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          repository: "${{ env.REPO_OWNER }}/${ env.REPO_NAME }}"
+
+      - name: Set commit variable
+        run: |
+          echo COMMIT=$(git rev-parse refs/heads/master | head -c -1) >> $GITHUB_ENV
+
       - name: Test hydra step
         uses: ./
         id: testhydra
@@ -18,3 +33,4 @@ jobs:
         run: |
           echo "eval is ${{ steps.testhydra.outputs.eval }}"
           echo "builds are ${{ steps.testhydra.outputs.builds }}"
+          echo "urls are ${{ steps.testhydra.outputs.buildProducts }}"

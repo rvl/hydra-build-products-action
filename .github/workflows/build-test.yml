@@ -25,14 +25,6 @@ jobs:
         run: |
           git config --global user.name 'GitHub Actions
           git config --global user.email 'rvl@users.noreply.github.com'
-          if git commit -am "Rebuild dist/index.js; then
+          if git commit -am "Rebuild dist/index.js"; then
             git push
           fi
-
-  # test: # make sure the action works on a clean machine without building
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: ./
-  #       with:
-  #         milliseconds: 1000

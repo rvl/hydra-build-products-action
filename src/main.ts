@@ -130,7 +130,7 @@ async function run(): Promise<void> {
     const spec = getActionPayload();
 
     const downloads: Download[] = _.map(params.jobs, (name: string) => {
-      return { job: name, buildProducts: [1] };
+      return { job: name, buildProducts: null };
     });
 
     const res = await hydra(params.hydra, params.statusName, spec, downloads, params.evaluation, params.builds);

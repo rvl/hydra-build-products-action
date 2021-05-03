@@ -270,6 +270,12 @@ function hydraBuildURL(hydraApi: AxiosInstance, buildId: number) {
   return `${hydraURL}${hydraBuildPath(buildId)}`;
 }
 
+function filterBuildProducts(build: HydraBuild, buildProducts: number[] | null) {
+  return (_.isEmpty(buildProducts))
+    ? _.keys(build.buildproducts)
+    : _.map(buildProducts, num => "" + num);
+}
+
 function hydraBuildProductDownloadURL(hydraApi: AxiosInstance, build: HydraBuild, num: string) {
   const buildProduct = build.buildproducts[num];
   const filename = buildProduct.name;
@@ -298,7 +304,7 @@ export interface Spec {
 
 export interface Download {
   job: string;
-  buildProducts: number[];
+  buildProducts: number[] | null; /* null means get all */
 }
 
 export interface Result {
@@ -379,7 +385,7 @@ export async function hydra(hydraURL: string, statusName: string, spec: Spec, do
   };
 }
 
-async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildProducts: number[]): Promise<string[]> {
+async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildProducts: number[] | null): Promise<string[]> {
   const buildURL = hydraBuildURL(hydraApi, build.id);
   const job = fullJobName(build);
 
@@ -387,7 +393,7 @@ async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildPro
 
   if (build.finished) {
     if (build.buildstatus === 0) {
-      return _.map(buildProducts, num => hydraBuildProductDownloadURL(hydraApi, build, "" + num));
+      return _.map(filterBuildProducts(build, buildProducts), num => hydraBuildProductDownloadURL(hydraApi, build, num));
     } else {
       console.log(`Build log here: ${buildURL}/nixlog/1/tail`);
       return [];

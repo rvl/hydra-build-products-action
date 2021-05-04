@@ -239,6 +239,13 @@ function formatTimings(timings) {
     return lodash_1.default.mapValues(timings, d => d === null || d === void 0 ? void 0 : d.toISOString());
 }
 exports.formatTimings = formatTimings;
+function validateRepo(repo) {
+    for (const what in ["owner", "name", "rev"]) {
+        if (!repo[what]) {
+            throw new Error(`${what} missing from github payload`);
+        }
+    }
+}
 async function hydra(params) {
     var _a, _b, _c, _d, _e;
     const timings = { actionStarted: new Date() };
@@ -249,11 +256,7 @@ async function hydra(params) {
     const githubApi = makeGitHubApi(params.requestOptions || {});
     let evaluation = (_a = params.previous) === null || _a === void 0 ? void 0 : _a.evaluation;
     if (lodash_1.default.isEmpty(evaluation)) {
-        for (const what in params.spec.repo) {
-            if (!params.spec[what]) {
-                throw new Error(`${what} missing from github payload`);
-            }
-        }
+        validateRepo(params.spec.repo);
         evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, params.spec.repo, params.statusName, (_b = params.previous) === null || _b === void 0 ? void 0 : _b.status, onPending);
         if (!evaluation) {
             const msg = "Couldn't get eval from GitHub status API.";
@@ -338,7 +341,6 @@ function getActionPayload() {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const eventName = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.eventName;
     const payload = (_b = github === null || github === void 0 ? void 0 : github.context) === null || _b === void 0 ? void 0 : _b.payload;
-    console.debug(`${eventName} payload`, payload);
     const statusEvent = eventName === "status" ? payload : undefined;
     const pushEvent = eventName === "push" ? payload : undefined;
     const tagEvent = eventName === "push" && ((_c = payload === null || payload === void 0 ? void 0 : payload.ref) === null || _c === void 0 ? void 0 : _c.startsWith("refs/tags/")) ? payload : undefined;
@@ -350,7 +352,8 @@ function getActionPayload() {
             rev: process.env.COMMIT || ((_g = tagEvent === null || tagEvent === void 0 ? void 0 : tagEvent.head_commit) === null || _g === void 0 ? void 0 : _g.id) || (pushEvent === null || pushEvent === void 0 ? void 0 : pushEvent.after) || ((_j = (_h = prEvent === null || prEvent === void 0 ? void 0 : prEvent.pull_request) === null || _h === void 0 ? void 0 : _h.head) === null || _j === void 0 ? void 0 : _j.sha) || (statusEvent === null || statusEvent === void 0 ? void 0 : statusEvent.sha) || "",
         },
         previousStatus: statusEvent ? { context: statusEvent.context, state: statusEvent.state, target_url: statusEvent.target_url } : undefined,
-        payload
+        eventName,
+        payload,
     };
 }
 function getActionInputs() {
@@ -439,6 +442,7 @@ async function run() {
         core.debug("rvl/hydra-build-products-action");
         const params = getActionInputs();
         const spec = getActionPayload();
+        console.debug("GitHub spec", spec);
         const downloads = lodash_1.default.map(params.jobs, (name) => {
             return { job: name, buildProducts: null };
         });
@@ -27294,7 +27298,7 @@ module.exports = eval("require")("encoding");
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"_args":[["axios@0.21.1","/home/runner/work/hydra-build-products-action/hydra-build-products-action"]],"_from":"axios@0.21.1","_id":"axios@0.21.1","_inBundle":false,"_integrity":"sha512-dKQiRHxGD9PPRIUNIWvZhPTPpl1rf/OxTYKsqKUDjBwYylTvV7SjSHJb9ratfyzM6wCdLCOYLzs73qpg5c4iGA==","_location":"/axios","_phantomChildren":{},"_requested":{"type":"version","registry":true,"raw":"axios@0.21.1","name":"axios","escapedName":"axios","rawSpec":"0.21.1","saveSpec":null,"fetchSpec":"0.21.1"},"_requiredBy":["/","/@types/axios"],"_resolved":"https://registry.npmjs.org/axios/-/axios-0.21.1.tgz","_spec":"0.21.1","_where":"/home/runner/work/hydra-build-products-action/hydra-build-products-action","author":{"name":"Matt Zabriskie"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"bugs":{"url":"https://github.com/axios/axios/issues"},"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}],"dependencies":{"follow-redirects":"^1.10.0"},"description":"Promise based HTTP client for the browser and node.js","devDependencies":{"bundlesize":"^0.17.0","coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.0.2","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^20.1.0","grunt-karma":"^2.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^1.0.18","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^1.3.0","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-firefox-launcher":"^1.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^1.2.0","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.7","karma-webpack":"^1.7.0","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^5.2.0","sinon":"^4.5.0","typescript":"^2.8.1","url-search-params":"^0.10.0","webpack":"^1.13.1","webpack-dev-server":"^1.14.1"},"homepage":"https://github.com/axios/axios","jsdelivr":"dist/axios.min.js","keywords":["xhr","http","ajax","promise","node"],"license":"MIT","main":"index.js","name":"axios","repository":{"type":"git","url":"git+https://github.com/axios/axios.git"},"scripts":{"build":"NODE_ENV=production grunt build","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","examples":"node ./examples/server.js","fix":"eslint --fix lib/**/*.js","postversion":"git push && git push --tags","preversion":"npm test","start":"node ./sandbox/server.js","test":"grunt test && bundlesize","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"},"typings":"./index.d.ts","unpkg":"dist/axios.min.js","version":"0.21.1"}');
+module.exports = JSON.parse('{"_from":"axios@^0.21.0","_id":"axios@0.21.1","_inBundle":false,"_integrity":"sha512-dKQiRHxGD9PPRIUNIWvZhPTPpl1rf/OxTYKsqKUDjBwYylTvV7SjSHJb9ratfyzM6wCdLCOYLzs73qpg5c4iGA==","_location":"/axios","_phantomChildren":{},"_requested":{"type":"range","registry":true,"raw":"axios@^0.21.0","name":"axios","escapedName":"axios","rawSpec":"^0.21.0","saveSpec":null,"fetchSpec":"^0.21.0"},"_requiredBy":["#USER","/"],"_resolved":"https://registry.npmjs.org/axios/-/axios-0.21.1.tgz","_shasum":"22563481962f4d6bde9a76d516ef0e5d3c09b2b8","_spec":"axios@^0.21.0","_where":"/home/rodney/iohk/hydra-build-products-action","author":{"name":"Matt Zabriskie"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"bugs":{"url":"https://github.com/axios/axios/issues"},"bundleDependencies":false,"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}],"dependencies":{"follow-redirects":"^1.10.0"},"deprecated":false,"description":"Promise based HTTP client for the browser and node.js","devDependencies":{"bundlesize":"^0.17.0","coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.0.2","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^20.1.0","grunt-karma":"^2.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^1.0.18","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^1.3.0","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-firefox-launcher":"^1.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^1.2.0","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.7","karma-webpack":"^1.7.0","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^5.2.0","sinon":"^4.5.0","typescript":"^2.8.1","url-search-params":"^0.10.0","webpack":"^1.13.1","webpack-dev-server":"^1.14.1"},"homepage":"https://github.com/axios/axios","jsdelivr":"dist/axios.min.js","keywords":["xhr","http","ajax","promise","node"],"license":"MIT","main":"index.js","name":"axios","repository":{"type":"git","url":"git+https://github.com/axios/axios.git"},"scripts":{"build":"NODE_ENV=production grunt build","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","examples":"node ./examples/server.js","fix":"eslint --fix lib/**/*.js","postversion":"git push && git push --tags","preversion":"npm test","start":"node ./sandbox/server.js","test":"grunt test && bundlesize","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"},"typings":"./index.d.ts","unpkg":"dist/axios.min.js","version":"0.21.1"}');
 
 /***/ }),
 

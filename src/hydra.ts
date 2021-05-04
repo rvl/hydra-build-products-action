@@ -349,6 +349,7 @@ export interface GitHubRepo {
 export interface Spec {
   repo: GitHubRepo;
   previousStatus?: GitHubStatus;
+  eventName?: string;
   payload?: any;
 }
 
@@ -379,6 +380,14 @@ export function formatTimings(timings: Timings) {
   return _.mapValues(timings, d => d?.toISOString());
 }
 
+function validateRepo(repo: GitHubRepo): void {
+  for (const what in ["owner", "name", "rev"]) {
+    if (!(<any>repo)[what]) {
+      throw new Error(`${what} missing from github payload`);
+    }
+  }
+}
+
 export async function hydra(params: HydraParams): Promise<Result> {
   const timings: Timings = { actionStarted: new Date() };
   const onPending = () => {
@@ -391,12 +400,7 @@ export async function hydra(params: HydraParams): Promise<Result> {
   let evaluation = params.previous?.evaluation;
 
   if (_.isEmpty(evaluation)) {
-    for (const what in params.spec.repo) {
-      if (!(<any>params.spec)[what]) {
-        throw new Error(`${what} missing from github payload`);
-      }
-    }
-
+    validateRepo(params.spec.repo);
     evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, params.spec.repo, params.statusName, params.previous?.status, onPending);
     if (!evaluation) {
       const msg = "Couldn't get eval from GitHub status API.";

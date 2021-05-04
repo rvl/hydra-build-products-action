@@ -15,8 +15,6 @@ function getActionPayload(): Spec {
   const eventName = github?.context?.eventName;
   const payload = github?.context?.payload;
 
-  console.debug(`${eventName} payload`, payload);
-
   const statusEvent = eventName === "status" ? payload : undefined;
   const pushEvent = eventName === "push" ? payload : undefined;
   const tagEvent = eventName === "push" && payload?.ref?.startsWith("refs/tags/") ? payload : undefined;
@@ -29,7 +27,8 @@ function getActionPayload(): Spec {
       rev: process.env.COMMIT || tagEvent?.head_commit?.id || pushEvent?.after || prEvent?.pull_request?.head?.sha || statusEvent?.sha || "",
     },
     previousStatus: statusEvent ? { context: statusEvent.context, state: statusEvent.state, target_url: statusEvent.target_url } : undefined,
-    payload
+    eventName,
+    payload,
   };
 }
 
@@ -155,6 +154,7 @@ async function run(): Promise<void> {
     const params = getActionInputs();
 
     const spec = getActionPayload();
+    console.debug("GitHub spec", spec);
 
     const downloads: Download[] = _.map(params.jobs, (name: string) => {
       return { job: name, buildProducts: null };

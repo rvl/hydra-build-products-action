@@ -12,13 +12,23 @@ import {hydra, Spec, Result, Download, formatTimings, HydraEval, HydraBuilds} fr
 // GitHub event context
 
 function getActionPayload(): Spec {
+  const eventName = github?.context?.eventName;
   const payload = github?.context?.payload;
-  console.debug("payload", payload);
+
+  console.debug(`${eventName} payload`, payload);
+
+  const statusEvent = eventName === "status" ? payload : undefined;
+  const pushEvent = eventName === "push" ? payload : undefined;
+  const tagEvent = eventName === "push" && payload?.ref?.startsWith("refs/tags/") ? payload : undefined;
+  const prEvent = eventName === "pull_request" ? payload : undefined;
 
   return {
-    owner: process.env.REPO_OWNER || payload?.repository?.owner?.login || "",
-    repo: process.env.REPO_NAME || payload?.repository?.name || "",
-    rev: process.env.COMMIT || payload?.head_commit?.id || payload?.after || payload?.pull_request?.head?.sha || "",
+    repo: {
+      owner: process.env.REPO_OWNER || payload?.repository?.owner?.login || "",
+      name: process.env.REPO_NAME || payload?.repository?.name || "",
+      rev: process.env.COMMIT || tagEvent?.head_commit?.id || pushEvent?.after || prEvent?.pull_request?.head?.sha || statusEvent?.sha || "",
+    },
+    previousStatus: statusEvent ? { context: statusEvent.context, state: statusEvent.state, target_url: statusEvent.target_url } : undefined,
     payload
   };
 }
@@ -38,6 +48,9 @@ interface Params {
   evaluation: HydraEval;
   builds: HydraBuilds;
   statusName: string;
+  project?: string;
+  jobset?: string;
+  requiredJob?: string;
 }
 
 function getActionInputs(): Params {
@@ -49,6 +62,8 @@ function getActionInputs(): Params {
       return e;
     }
   };
+  const str = (s: string) => s;
+  const optstr = (s: string) => s ? s : undefined;
 
   const actionInputs = {
     hydra: {
@@ -57,11 +72,23 @@ function getActionInputs(): Params {
     },
     statusName: {
       env: "HYDRA_EVAL_STATUS_NAME",
-      parse: (str: string) => str
+      parse: str
     },
     jobs: {
       env: "HYDRA_JOBS",
       parse: (jobs: string) => jobs.split(/ /)
+    },
+    requiredJob: {
+      env: "HYDRA_REQUIRED_JOB",
+      parse: optstr
+    },
+    project: {
+      env: "HYDRA_PROJECT",
+      parse: optstr
+    },
+    jobset: {
+      env: "HYDRA_JOBSET",
+      parse: optstr
     },
     evaluation: {
       env: "HYDRA_EVAL_JSON",
@@ -70,7 +97,7 @@ function getActionInputs(): Params {
     builds: {
       env: "HYDRA_BUILDS_JSON",
       parse: json
-    }
+    },
   };
 
   const getActionInput = ({ env , parse }: Input, inputName: string) =>
@@ -133,7 +160,21 @@ async function run(): Promise<void> {
       return { job: name, buildProducts: null };
     });
 
-    const res = await hydra(params.hydra, params.statusName, spec, downloads, params.evaluation, params.builds);
+    const res = await hydra({
+      hydraURL: params.hydra,
+      jobs: params.jobs,
+      spec,
+      downloads,
+      statusName: params.statusName,
+      requiredJob: params.requiredJob,
+      project: params.project,
+      jobset: params.jobset,
+      previous: {
+        status: spec.previousStatus,
+        evaluation: params.evaluation,
+        builds: params.builds,
+      },
+    });
 
     setActionOutputs(res);
   } catch (error) {

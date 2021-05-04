@@ -105,26 +105,6 @@ function findEvalByInput(evals: HydraEval[], repo: GitHubRepo) {
   return _.find(evals, e => e.jobsetevalinputs[repo.name] && e.jobsetevalinputs[repo.name].revision === repo.rev);
 }
 
-async function findEvalByCommit(api: AxiosInstance, project: string, jobset: string, repo: GitHubRepo, page?: string): Promise<null|HydraEval> {
-  const evalsPath = `jobset/${project}/${jobset}/evals${page || ""}`;
-  const response: AxiosResponse<HydraJobsetEvals> = await api.get(evalsPath);
-
-  const evaluation = findEvalByInput(response.data.evals, repo);
-
-  if (evaluation) {
-    return evaluation;
-  } else if (response.data.next) {
-    return findEvalByCommit(api, project, jobset, repo, response.data.next);
-  } else {
-    return null;
-  }
-}
-
-async function findCardanoWalletEval(api: AxiosInstance, rev: string): Promise<null|HydraEval> {
-  const repo = { owner: "input-output-hk", name: "cardano-wallet", rev };
-  return findEvalByCommit(api, "Cardano", "cardano-wallet", repo);
-}
-
 function sleep(ms = 0): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 };
@@ -215,46 +195,6 @@ async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: Axio
   await sleep(60000);
   return await retry();
 }
-
-async function waitForPendingEval(hydraApi: AxiosInstance, spec: Spec, pendings: GitHubStatus[]): Promise<HydraEval[]> {
-
-  await sleep(10000);
-
-  let evals: HydraEval[] = [];
-  for await (const pending of pendings) {
-    const url = pending?.target_url as string;
-    const jobset: AxiosResponse<HydraEval> = await hydraApi.get(url);
-    if (jobset.data.errormsg) {
-      console.log(`There is a currently an evaluation error for jobset: ${pending.target_url}`);
-    }
-
-    const evalsURL = url.replace(/#.*$/, "/evals");
-    const jobsetEvals = await hydraApi.get(evalsURL);
-    console.log(JSON.stringify(jobsetEvals.data));
-    console.log(`There are ${jobsetEvals.data.evals.length} eval(s)`);
-    const evaluation = findEvalByInput(jobsetEvals.data.evals, spec.repo);
-    if (evaluation) {
-      console.log("Found eval", evaluation);
-      evals.push(evaluation);
-    }
-  }
-
-  if (_.isEmpty(evals)) {
-    console.log("Eval is still pending - trying again...");
-    return waitForPendingEval(hydraApi, spec, pendings);
-  } else {
-    return evals;
-  }
-}
-
-// todo: unused
-// async function findBuildsInEvals(hydraApi: AxiosInstance, evals: HydraEval[], jobs: string[]): Promise<HydraBuilds> {
-//   let builds: HydraBuilds = {};
-//   for (const evaluation of evals) {
-//     builds.assign(await findBuildsInEval(evaluation));
-//   }
-//   return builds;
-// }
 
 async function fetchBuildFromCIStatus(hydraApi: AxiosInstance, previousStatus?: GitHubStatus): Promise<HydraBuilds> {
   if (previousStatus) {

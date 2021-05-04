@@ -240,7 +240,7 @@ function formatTimings(timings) {
 }
 exports.formatTimings = formatTimings;
 function validateRepo(repo) {
-    for (const what in ["owner", "name", "rev"]) {
+    for (const what of ["owner", "name", "rev"]) {
         if (!repo[what]) {
             throw new Error(`${what} missing from github payload`);
         }

@@ -381,7 +381,7 @@ export function formatTimings(timings: Timings) {
 }
 
 function validateRepo(repo: GitHubRepo): void {
-  for (const what in ["owner", "name", "rev"]) {
+  for (const what of ["owner", "name", "rev"]) {
     if (!(<any>repo)[what]) {
       throw new Error(`${what} missing from github payload`);
     }

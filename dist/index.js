@@ -9,29 +9,14 @@ require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
 // import fs from 'fs';
 // import path from 'path';
 // import * as github from '@actions/github';
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __asyncValues = (this && this.__asyncValues) || function (o) {
-    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-    var m = o[Symbol.asyncIterator], i;
-    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
-    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
-    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.hydra = exports.formatTimings = void 0;
+exports.hydra = exports.formatTimings = exports.makeBadgeURL = void 0;
 const axios_1 = __importDefault(__nccwpck_require__(6545));
 const lodash_1 = __importDefault(__nccwpck_require__(250));
+const shields_1 = __nccwpck_require__(4700);
 //////////////////////////////////////////////////////////////////////
 // GitHub API Requests
 function makeGitHubApi(options = {}) {
@@ -58,178 +43,116 @@ function makeHydraApi(hydraURL, options = {}) {
     });
     return api;
 }
-function findEvalByInput(evals, spec) {
-    return lodash_1.default.find(evals, e => e.jobsetevalinputs[spec.repo] && e.jobsetevalinputs[spec.repo].revision === spec.rev);
-}
-function findEvalByCommit(api, project, jobset, spec, page) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const evalsPath = `jobset/${project}/${jobset}/evals${page || ""}`;
-        const response = yield api.get(evalsPath);
-        const evaluation = findEvalByInput(response.data.evals, spec);
-        if (evaluation) {
-            return evaluation;
-        }
-        else if (response.data.next) {
-            return findEvalByCommit(api, project, jobset, spec, response.data.next);
-        }
-        else {
-            return null;
-        }
-    });
-}
-function findCardanoWalletEval(api, rev) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const spec = { owner: "input-output-hk", repo: "cardano-wallet", rev };
-        return findEvalByCommit(api, "Cardano", "cardano-wallet", spec);
-    });
+function findEvalByInput(evals, repo) {
+    return lodash_1.default.find(evals, e => e.jobsetevalinputs[repo.name] && e.jobsetevalinputs[repo.name].revision === repo.rev);
 }
 function sleep(ms = 0) {
     return new Promise(r => setTimeout(r, ms));
 }
 ;
-function findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending, page) {
-    return __awaiter(this, void 0, void 0, function* () {
+async function fetchGitHubStatus(githubApi, { owner, name, rev }, statusName, previousStatus, page) {
+    if (previousStatus && previousStatus.context.startsWith(statusName)) {
+        return {
+            statuses: lodash_1.default([previousStatus]),
+            nextPage: null,
+        };
+    }
+    else {
         const q = "?per_page=100" + (page ? `&page=${page}` : "");
-        const { owner, repo, rev } = spec;
-        const response = yield githubApi.get(`repos/${owner}/${repo}/commits/${rev}/statuses${q}`);
-        const statuses = lodash_1.default(response.data).filter(status => status.context.startsWith(statusName)).sortBy("updated_at").reverse();
-        //console.log("statuses", JSON.stringify(statuses.value()));
-        if (!statuses.isEmpty()) {
-            onPending();
-        }
-        const successful = statuses.filter({ state: "success" });
-        const pending = statuses.filter({ state: "pending" });
-        const failed = statuses.difference(successful.value(), pending.value());
-        console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
-        // We can't simply take the latest succes status, because there are
-        // sometimes "ghost" evaluations with no builds.
-        const getGoodEval = (statuses) => { var statuses_1, statuses_1_1; return __awaiter(this, void 0, void 0, function* () {
-            var e_1, _a;
-            const isGoodEval = (status) => __awaiter(this, void 0, void 0, function* () {
-                var _b;
-                const response = yield hydraApi.get(status.target_url);
-                return lodash_1.default.isEmpty((_b = response.data) === null || _b === void 0 ? void 0 : _b.builds) ? null : response.data;
-            });
-            try {
-                for (statuses_1 = __asyncValues(statuses); statuses_1_1 = yield statuses_1.next(), !statuses_1_1.done;) {
-                    const status = statuses_1_1.value;
-                    const evaluation = yield isGoodEval(status);
-                    if (evaluation) {
-                        return evaluation;
-                    }
-                    else {
-                        console.log("Discarding ghost eval status", status);
-                    }
-                }
-            }
-            catch (e_1_1) { e_1 = { error: e_1_1 }; }
-            finally {
-                try {
-                    if (statuses_1_1 && !statuses_1_1.done && (_a = statuses_1.return)) yield _a.call(statuses_1);
-                }
-                finally { if (e_1) throw e_1.error; }
-            }
-        }); };
-        const evaluation = yield getGoodEval(successful.value());
-        const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending, page);
-        if (evaluation) {
-            console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
-            return evaluation;
-        }
-        else if (statuses.isEmpty()) {
-            if (response.headers["Link"]) {
-                const next = (page || 1) + 1;
-                console.log(`Eval not found - trying page ${next}`);
-                return yield retry(next);
+        const response = await githubApi.get(`repos/${owner}/${name}/commits/${rev}/statuses${q}`);
+        return {
+            statuses: lodash_1.default(response.data).filter(st => st.context.startsWith(statusName)).sortBy("updated_at").reverse(),
+            nextPage: response.headers["Link"],
+        };
+    }
+}
+async function findEvalFromGitHubStatus(hydraApi, githubApi, repo, statusName, previousStatus, onPending = (() => undefined), page) {
+    const { statuses, nextPage } = await fetchGitHubStatus(githubApi, repo, statusName, previousStatus, page);
+    //console.log("statuses", JSON.stringify(statuses.value()));
+    if (!statuses.isEmpty()) {
+        onPending();
+    }
+    const successful = statuses.filter({ state: "success" });
+    const pending = statuses.filter({ state: "pending" });
+    const failed = statuses.difference(successful.value(), pending.value());
+    console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
+    // We can't simply take the latest succes status, because there are
+    // sometimes "ghost" evaluations with no builds.
+    const getGoodEval = async (statuses) => {
+        const isGoodEval = async (status) => {
+            var _a;
+            const response = await hydraApi.get(status.target_url);
+            return lodash_1.default.isEmpty((_a = response.data) === null || _a === void 0 ? void 0 : _a.builds) ? null : response.data;
+        };
+        for await (const status of statuses) {
+            const evaluation = await isGoodEval(status);
+            if (evaluation) {
+                return evaluation;
             }
             else {
-                console.log(`Eval not found, and no more pages from GitHub - trying again from first page...`);
+                console.log("Discarding ghost eval status", status);
             }
+        }
+    };
+    const evaluation = await getGoodEval(successful.value());
+    const retry = (page) => findEvalFromGitHubStatus(hydraApi, githubApi, repo, statusName, previousStatus, onPending, page);
+    if (evaluation) {
+        console.log(`Eval ${evaluation.id} is successful and has ${evaluation.builds.length} builds`);
+        return evaluation;
+    }
+    else if (statuses.isEmpty()) {
+        if (nextPage) {
+            const next = (page || 1) + 1;
+            console.log(`Eval not found - trying page ${next}`);
+            return await retry(next);
         }
         else {
-            if (!successful.isEmpty()) {
-                console.log("Need a real successful eval - trying again...");
-            }
-            else if (!pending.isEmpty()) {
-                console.log("Eval is pending - trying again...");
-            }
-            else {
-                console.log("Eval is currently failed - trying again...");
-            }
+            console.log(`Eval not found, and no more pages from GitHub - trying again from first page...`);
         }
-        console.log(`Waiting a minute for updated CI status.`);
-        yield sleep(60000);
-        return yield retry();
-    });
-}
-function waitForPendingEval(hydraApi, spec, pendings) {
-    var pendings_1, pendings_1_1;
-    var e_2, _a;
-    return __awaiter(this, void 0, void 0, function* () {
-        yield sleep(10000);
-        let evals = [];
-        try {
-            for (pendings_1 = __asyncValues(pendings); pendings_1_1 = yield pendings_1.next(), !pendings_1_1.done;) {
-                const pending = pendings_1_1.value;
-                const jobset = yield hydraApi.get(pending.target_url);
-                if (jobset.data.errormsg) {
-                    console.log(`There is a currently an evaluation error for jobset: ${pending.target_url}`);
-                }
-                const evalsURL = pending.target_url.replace(/#.*$/, "/evals");
-                const jobsetEvals = yield hydraApi.get(evalsURL);
-                console.log(JSON.stringify(jobsetEvals.data));
-                console.log(`There are ${jobsetEvals.data.evals.length} eval(s)`);
-                const evaluation = findEvalByInput(jobsetEvals.data.evals, spec);
-                if (evaluation) {
-                    console.log("Found eval", evaluation);
-                    evals.push(evaluation);
-                }
-            }
+    }
+    else {
+        if (!successful.isEmpty()) {
+            console.log("Need a real successful eval - trying again...");
         }
-        catch (e_2_1) { e_2 = { error: e_2_1 }; }
-        finally {
-            try {
-                if (pendings_1_1 && !pendings_1_1.done && (_a = pendings_1.return)) yield _a.call(pendings_1);
-            }
-            finally { if (e_2) throw e_2.error; }
-        }
-        if (lodash_1.default.isEmpty(evals)) {
-            console.log("Eval is still pending - trying again...");
-            return waitForPendingEval(hydraApi, spec, pendings);
+        else if (!pending.isEmpty()) {
+            console.log("Eval is pending - trying again...");
         }
         else {
-            return evals;
+            console.log("Eval is currently failed - trying again...");
         }
-    });
+    }
+    console.log(`Waiting a minute for updated CI status.`);
+    await sleep(60000);
+    return await retry();
 }
-// todo: unused
-// async function findBuildsInEvals(hydraApi: AxiosInstance, evals: HydraEval[], jobs: string[]): Promise<HydraBuilds> {
-//   let builds: HydraBuilds = {};
-//   for (const evaluation of evals) {
-//     builds.assign(await findBuildsInEval(evaluation));
-//   }
-//   return builds;
-// }
+async function fetchBuildFromCIStatus(hydraApi, previousStatus) {
+    if (previousStatus) {
+        const path = previousStatus.target_url.match(/^.*\/build\/(\d+)$/);
+        if (path) {
+            const response = await fetchHydraBuild(hydraApi, parseInt(path[1], 10));
+            return Object.fromEntries([[response.data.job, response.data]]);
+        }
+    }
+    return {};
+}
 function fetchHydraBuild(hydraApi, buildId) {
     return hydraApi.get(hydraBuildPath(buildId));
 }
-function findBuildsInEval(hydraApi, evaluation, jobs) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let builds = {};
-        for (const buildId of evaluation.builds) {
-            const response = yield fetchHydraBuild(hydraApi, buildId);
-            const build = response.data;
-            if (lodash_1.default.includes(jobs, build.job)) {
-                console.log(`Found job ${build.job}`);
-                builds[build.job] = build;
-                if (lodash_1.default.size(builds) === lodash_1.default.size(jobs)) {
-                    console.log(`All jobs found`);
-                    break;
-                }
+async function findBuildsInEval(hydraApi, evaluation, jobs) {
+    let builds = {};
+    for (const buildId of evaluation.builds) {
+        const response = await fetchHydraBuild(hydraApi, buildId);
+        const build = response.data;
+        if (lodash_1.default.includes(jobs, build.job)) {
+            console.log(`Found job ${build.job}`);
+            builds[build.job] = build;
+            if (lodash_1.default.size(builds) === lodash_1.default.size(jobs)) {
+                console.log(`All jobs found`);
+                break;
             }
         }
-        return builds;
-    });
+    }
+    return builds;
 }
 function hydraBuildPath(buildId) {
     return `build/${buildId}`;
@@ -256,84 +179,120 @@ function buildStatus(build) {
         ? (build.buildstatus === 0 ? "succeeded" : "failed")
         : (!!build.starttime ? "building" : "queued");
 }
+function hydraEvalURL(hydraURL, evaluation) {
+    return (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? `${hydraURL}eval/${evaluation.id}` : undefined;
+}
+function hydraJobsetURL({ hydraURL, project, jobset }) {
+    return (project && jobset) ? `${hydraURL}jobset/${project}/${jobset}` : undefined;
+}
+//////////////////////////////////////////////////////////////////////
+// Build polling
+async function waitForBuild(hydraApi, build, buildProducts) {
+    const buildURL = hydraBuildURL(hydraApi, build.id);
+    const job = fullJobName(build);
+    console.log(`${buildURL} (${job}) is ${buildStatus(build)}.`);
+    if (build.finished) {
+        if (build.buildstatus === 0) {
+            return lodash_1.default.map(filterBuildProducts(build, buildProducts), num => hydraBuildProductDownloadURL(hydraApi, build, num));
+        }
+        else {
+            console.log(`Build log here: ${buildURL}/nixlog/1/tail`);
+            return [];
+        }
+    }
+    else {
+        console.log(`Retrying shortly...`);
+        await sleep(10000 + Math.floor(Math.random() * 5000));
+        const refreshed = await fetchHydraBuild(hydraApi, build.id);
+        return waitForBuild(hydraApi, refreshed.data, buildProducts);
+    }
+}
+//////////////////////////////////////////////////////////////////////
+// Build status badge
+function makeBadgeURL(info, evaluation, builds = {}, opts) {
+    const evalErr = !evaluation || evaluation.errormsg;
+    const numPass = lodash_1.default(builds).values().filter(build => build.buildstatus === 0).size();
+    const numFail = lodash_1.default(builds).values().filter(build => !!build.finished && build.buildstatus !== 0).size();
+    const numPending = lodash_1.default(builds).values().filter(build => !build.finished).size();
+    const job = info.requiredJob;
+    const requiredJob = job ? lodash_1.default.find(builds, { job }) : undefined;
+    const success = job ? (requiredJob === null || requiredJob === void 0 ? void 0 : requiredJob.buildstatus) === 0 : numFail === 0;
+    const finished = job ? requiredJob === null || requiredJob === void 0 ? void 0 : requiredJob.finished : numPending === 0;
+    return shields_1.shieldsIO(lodash_1.default.assign({
+        label: "Hydra",
+        logo: "nixos",
+        labelColor: "eeeeee",
+        message: (evalErr ? `⚠ Eval | ` : ``)
+            + `✓ ${numPass}`
+            + (numFail ? ` | ❌ ${numFail}` : ``)
+            + (numPending ? ` | ⌛ ${numPending} ` : ``),
+        color: evalErr ? "important" : (finished ? (success ? "success" : "critical") : "inactive"),
+        style: "for-the-badge",
+        cacheSeconds: 900,
+        link: [hydraJobsetURL(info),
+            hydraEvalURL(info.hydraURL, evaluation)]
+    }, opts));
+}
+exports.makeBadgeURL = makeBadgeURL;
+;
 function formatTimings(timings) {
     return lodash_1.default.mapValues(timings, d => d === null || d === void 0 ? void 0 : d.toISOString());
 }
 exports.formatTimings = formatTimings;
-function hydra(hydraURL, statusName, spec, downloads, evaluation, builds = {}, options = {}) {
-    var _a;
-    return __awaiter(this, void 0, void 0, function* () {
-        const timings = { actionStarted: new Date() };
-        const onPending = () => {
-            timings.ciStatusCreated = timings.ciStatusCreated || new Date();
-        };
-        const hydraApi = makeHydraApi(hydraURL, options);
-        const githubApi = makeGitHubApi(options);
-        if (lodash_1.default.isEmpty(evaluation)) {
-            for (const what in spec) {
-                if (what !== "payload" && !spec[what]) {
-                    console.log("github payload:", spec.payload);
-                    throw new Error(`${what} missing from github payload`);
-                }
-            }
-            evaluation = yield findEvalFromGitHubStatus(hydraApi, githubApi, statusName, spec, onPending);
-            if (!evaluation) {
-                const msg = "Couldn't get eval from GitHub status API.";
-                console.error(msg);
-                throw new Error(msg);
+async function hydra(params) {
+    var _a, _b, _c, _d, _e;
+    const timings = { actionStarted: new Date() };
+    const onPending = () => {
+        timings.ciStatusCreated = timings.ciStatusCreated || new Date();
+    };
+    const hydraApi = makeHydraApi(params.hydraURL, params.requestOptions || {});
+    const githubApi = makeGitHubApi(params.requestOptions || {});
+    let evaluation = (_a = params.previous) === null || _a === void 0 ? void 0 : _a.evaluation;
+    if (lodash_1.default.isEmpty(evaluation)) {
+        for (const what in params.spec.repo) {
+            if (!params.spec[what]) {
+                throw new Error(`${what} missing from github payload`);
             }
         }
-        else {
-            console.log(`Eval ${evaluation === null || evaluation === void 0 ? void 0 : evaluation.id} has ${(_a = evaluation === null || evaluation === void 0 ? void 0 : evaluation.builds) === null || _a === void 0 ? void 0 : _a.length} builds`);
+        evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, params.spec.repo, params.statusName, (_b = params.previous) === null || _b === void 0 ? void 0 : _b.status, onPending);
+        if (!evaluation) {
+            const msg = "Couldn't get eval from GitHub status API.";
+            console.error(msg);
+            throw new Error(msg);
         }
-        timings.evaluated = new Date();
-        // TODO: cache info for every build in the map so that it can be
-        // re-used.
-        if (lodash_1.default.isEmpty(builds)) {
-            builds = yield findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(downloads, d => d.job));
-        }
-        timings.foundBuilds = new Date();
-        if (lodash_1.default.isEmpty(builds) && !lodash_1.default.isEmpty(downloads)) {
-            console.log("Didn't find any builds in evals.");
-        }
-        else {
-            console.log("Waiting for builds to complete...");
-        }
-        const urls = yield Promise.all(lodash_1.default.map(downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
-        timings.built = new Date();
-        return {
-            evaluation,
-            evalURL: (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? `${hydraURL}eval/${evaluation.id}` : undefined,
-            builds,
-            buildURLs: lodash_1.default.map(builds, build => hydraBuildURL(hydraApi, build.id)),
-            buildProductURLs: lodash_1.default.flatten(urls),
-            timings
-        };
-    });
+    }
+    else {
+        console.log(`Eval ${evaluation === null || evaluation === void 0 ? void 0 : evaluation.id} has ${(_c = evaluation === null || evaluation === void 0 ? void 0 : evaluation.builds) === null || _c === void 0 ? void 0 : _c.length} builds`);
+    }
+    timings.evaluated = new Date();
+    let builds = ((_d = params.previous) === null || _d === void 0 ? void 0 : _d.builds)
+        || await fetchBuildFromCIStatus(hydraApi, (_e = params.previous) === null || _e === void 0 ? void 0 : _e.status)
+        || {};
+    // TODO: cache info for every build in the map so that it can be
+    // re-used.
+    if (lodash_1.default.isEmpty(builds)) {
+        builds = await findBuildsInEval(hydraApi, evaluation, lodash_1.default.map(params.downloads, d => d.job));
+    }
+    timings.foundBuilds = new Date();
+    if (lodash_1.default.isEmpty(builds) && !lodash_1.default.isEmpty(params.downloads)) {
+        console.log("Didn't find any builds in evals.");
+    }
+    else {
+        console.log("Waiting for builds to complete...");
+    }
+    const urls = await Promise.all(lodash_1.default.map(params.downloads, download => waitForBuild(hydraApi, builds[download.job], download.buildProducts)));
+    timings.built = new Date();
+    return {
+        evaluation,
+        evalURL: hydraEvalURL(params.hydraURL, evaluation),
+        builds,
+        buildURLs: lodash_1.default.map(builds, build => hydraBuildURL(hydraApi, build.id)),
+        buildProductURLs: lodash_1.default.flatten(urls),
+        timings,
+        badge: makeBadgeURL(params, evaluation, builds)
+    };
 }
 exports.hydra = hydra;
-function waitForBuild(hydraApi, build, buildProducts) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const buildURL = hydraBuildURL(hydraApi, build.id);
-        const job = fullJobName(build);
-        console.log(`${buildURL} (${job}) is ${buildStatus(build)}.`);
-        if (build.finished) {
-            if (build.buildstatus === 0) {
-                return lodash_1.default.map(filterBuildProducts(build, buildProducts), num => hydraBuildProductDownloadURL(hydraApi, build, num));
-            }
-            else {
-                console.log(`Build log here: ${buildURL}/nixlog/1/tail`);
-                return [];
-            }
-        }
-        else {
-            console.log(`Retrying shortly...`);
-            yield sleep(10000 + Math.floor(Math.random() * 5000));
-            const refreshed = yield fetchHydraBuild(hydraApi, build.id);
-            return waitForBuild(hydraApi, refreshed.data, buildProducts);
-        }
-    });
-}
 
 
 /***/ }),
@@ -365,15 +324,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -385,13 +335,21 @@ const hydra_1 = __nccwpck_require__(8458);
 //////////////////////////////////////////////////////////////////////
 // GitHub event context
 function getActionPayload() {
-    var _a, _b, _c, _d, _e, _f, _g;
-    const payload = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.payload;
-    console.debug("payload", payload);
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    const eventName = (_a = github === null || github === void 0 ? void 0 : github.context) === null || _a === void 0 ? void 0 : _a.eventName;
+    const payload = (_b = github === null || github === void 0 ? void 0 : github.context) === null || _b === void 0 ? void 0 : _b.payload;
+    console.debug(`${eventName} payload`, payload);
+    const statusEvent = eventName === "status" ? payload : undefined;
+    const pushEvent = eventName === "push" ? payload : undefined;
+    const tagEvent = eventName === "push" && ((_c = payload === null || payload === void 0 ? void 0 : payload.ref) === null || _c === void 0 ? void 0 : _c.startsWith("refs/tags/")) ? payload : undefined;
+    const prEvent = eventName === "pull_request" ? payload : undefined;
     return {
-        owner: process.env.REPO_OWNER || ((_c = (_b = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _b === void 0 ? void 0 : _b.owner) === null || _c === void 0 ? void 0 : _c.login) || "",
-        repo: process.env.REPO_NAME || ((_d = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _d === void 0 ? void 0 : _d.name) || "",
-        rev: process.env.COMMIT || ((_e = payload === null || payload === void 0 ? void 0 : payload.head_commit) === null || _e === void 0 ? void 0 : _e.id) || (payload === null || payload === void 0 ? void 0 : payload.after) || ((_g = (_f = payload === null || payload === void 0 ? void 0 : payload.pull_request) === null || _f === void 0 ? void 0 : _f.head) === null || _g === void 0 ? void 0 : _g.sha) || "",
+        repo: {
+            owner: process.env.REPO_OWNER || ((_e = (_d = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _d === void 0 ? void 0 : _d.owner) === null || _e === void 0 ? void 0 : _e.login) || "",
+            name: process.env.REPO_NAME || ((_f = payload === null || payload === void 0 ? void 0 : payload.repository) === null || _f === void 0 ? void 0 : _f.name) || "",
+            rev: process.env.COMMIT || ((_g = tagEvent === null || tagEvent === void 0 ? void 0 : tagEvent.head_commit) === null || _g === void 0 ? void 0 : _g.id) || (pushEvent === null || pushEvent === void 0 ? void 0 : pushEvent.after) || ((_j = (_h = prEvent === null || prEvent === void 0 ? void 0 : prEvent.pull_request) === null || _h === void 0 ? void 0 : _h.head) === null || _j === void 0 ? void 0 : _j.sha) || (statusEvent === null || statusEvent === void 0 ? void 0 : statusEvent.sha) || "",
+        },
+        previousStatus: statusEvent ? { context: statusEvent.context, state: statusEvent.state, target_url: statusEvent.target_url } : undefined,
         payload
     };
 }
@@ -405,6 +363,8 @@ function getActionInputs() {
             return e;
         }
     };
+    const str = (s) => s;
+    const optstr = (s) => s ? s : undefined;
     const actionInputs = {
         hydra: {
             env: "HYDRA_URL",
@@ -412,11 +372,23 @@ function getActionInputs() {
         },
         statusName: {
             env: "HYDRA_EVAL_STATUS_NAME",
-            parse: (str) => str
+            parse: str
         },
         jobs: {
             env: "HYDRA_JOBS",
             parse: (jobs) => jobs.split(/ /)
+        },
+        requiredJob: {
+            env: "HYDRA_REQUIRED_JOB",
+            parse: optstr
+        },
+        project: {
+            env: "HYDRA_PROJECT",
+            parse: optstr
+        },
+        jobset: {
+            env: "HYDRA_JOBSET",
+            parse: optstr
         },
         evaluation: {
             env: "HYDRA_EVAL_JSON",
@@ -425,7 +397,7 @@ function getActionInputs() {
         builds: {
             env: "HYDRA_BUILDS_JSON",
             parse: json
-        }
+        },
     };
     const getActionInput = ({ env, parse }, inputName) => parse(process.env[env] || core.getInput(inputName));
     const params = lodash_1.default.mapValues(actionInputs, getActionInput);
@@ -461,25 +433,63 @@ function makeActionOutputs(res) {
 }
 //////////////////////////////////////////////////////////////////////
 // Main function
-function run() {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            // debug is only shown if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-            core.debug("rvl/hydra-build-products-action");
-            const params = getActionInputs();
-            const spec = getActionPayload();
-            const downloads = lodash_1.default.map(params.jobs, (name) => {
-                return { job: name, buildProducts: null };
-            });
-            const res = yield hydra_1.hydra(params.hydra, params.statusName, spec, downloads, params.evaluation, params.builds);
-            setActionOutputs(res);
-        }
-        catch (error) {
-            core.setFailed(error.message);
-        }
-    });
+async function run() {
+    try {
+        // debug is only shown if you set the secret `ACTIONS_RUNNER_DEBUG` to true
+        core.debug("rvl/hydra-build-products-action");
+        const params = getActionInputs();
+        const spec = getActionPayload();
+        const downloads = lodash_1.default.map(params.jobs, (name) => {
+            return { job: name, buildProducts: null };
+        });
+        const res = await hydra_1.hydra({
+            hydraURL: params.hydra,
+            jobs: params.jobs,
+            spec,
+            downloads,
+            statusName: params.statusName,
+            requiredJob: params.requiredJob,
+            project: params.project,
+            jobset: params.jobset,
+            previous: {
+                status: spec.previousStatus,
+                evaluation: params.evaluation,
+                builds: params.builds,
+            },
+        });
+        setActionOutputs(res);
+    }
+    catch (error) {
+        core.setFailed(error.message);
+    }
 }
 run();
+
+
+/***/ }),
+
+/***/ 4700:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.shieldsIO = void 0;
+const lodash_1 = __importDefault(__nccwpck_require__(250));
+function shieldsIO(params) {
+    const encodePair = (key, value) => (lodash_1.default.isNumber(value) || !!value)
+        ? (key + "=" + encodeURIComponent("" + value))
+        : "";
+    const query = Object.keys(params).map(key => {
+        const value = params[key];
+        return lodash_1.default.map(lodash_1.default.isArray(value) ? value : [value], elem => encodePair(key, elem));
+    }).flat().filter(p => !!p).join("&");
+    return "https://img.shields.io/static/v1?" + query;
+}
+exports.shieldsIO = shieldsIO;
 
 
 /***/ }),
@@ -27284,7 +27294,7 @@ module.exports = eval("require")("encoding");
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"_args":[["axios@0.21.1","/home/runner/work/hydra-build-products-action/hydra-build-products-action"]],"_from":"axios@0.21.1","_id":"axios@0.21.1","_inBundle":false,"_integrity":"sha512-dKQiRHxGD9PPRIUNIWvZhPTPpl1rf/OxTYKsqKUDjBwYylTvV7SjSHJb9ratfyzM6wCdLCOYLzs73qpg5c4iGA==","_location":"/axios","_phantomChildren":{},"_requested":{"type":"version","registry":true,"raw":"axios@0.21.1","name":"axios","escapedName":"axios","rawSpec":"0.21.1","saveSpec":null,"fetchSpec":"0.21.1"},"_requiredBy":["/","/@types/axios"],"_resolved":"https://registry.npmjs.org/axios/-/axios-0.21.1.tgz","_spec":"0.21.1","_where":"/home/runner/work/hydra-build-products-action/hydra-build-products-action","author":{"name":"Matt Zabriskie"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"bugs":{"url":"https://github.com/axios/axios/issues"},"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}],"dependencies":{"follow-redirects":"^1.10.0"},"description":"Promise based HTTP client for the browser and node.js","devDependencies":{"bundlesize":"^0.17.0","coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.0.2","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^20.1.0","grunt-karma":"^2.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^1.0.18","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^1.3.0","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-firefox-launcher":"^1.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^1.2.0","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.7","karma-webpack":"^1.7.0","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^5.2.0","sinon":"^4.5.0","typescript":"^2.8.1","url-search-params":"^0.10.0","webpack":"^1.13.1","webpack-dev-server":"^1.14.1"},"homepage":"https://github.com/axios/axios","jsdelivr":"dist/axios.min.js","keywords":["xhr","http","ajax","promise","node"],"license":"MIT","main":"index.js","name":"axios","repository":{"type":"git","url":"git+https://github.com/axios/axios.git"},"scripts":{"build":"NODE_ENV=production grunt build","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","examples":"node ./examples/server.js","fix":"eslint --fix lib/**/*.js","postversion":"git push && git push --tags","preversion":"npm test","start":"node ./sandbox/server.js","test":"grunt test && bundlesize","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"},"typings":"./index.d.ts","unpkg":"dist/axios.min.js","version":"0.21.1"}');
+module.exports = JSON.parse('{"_from":"axios@^0.21.0","_id":"axios@0.21.1","_inBundle":false,"_integrity":"sha512-dKQiRHxGD9PPRIUNIWvZhPTPpl1rf/OxTYKsqKUDjBwYylTvV7SjSHJb9ratfyzM6wCdLCOYLzs73qpg5c4iGA==","_location":"/axios","_phantomChildren":{},"_requested":{"type":"range","registry":true,"raw":"axios@^0.21.0","name":"axios","escapedName":"axios","rawSpec":"^0.21.0","saveSpec":null,"fetchSpec":"^0.21.0"},"_requiredBy":["#USER","/"],"_resolved":"https://registry.npmjs.org/axios/-/axios-0.21.1.tgz","_shasum":"22563481962f4d6bde9a76d516ef0e5d3c09b2b8","_spec":"axios@^0.21.0","_where":"/home/rodney/iohk/hydra-build-products-action","author":{"name":"Matt Zabriskie"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"bugs":{"url":"https://github.com/axios/axios/issues"},"bundleDependencies":false,"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}],"dependencies":{"follow-redirects":"^1.10.0"},"deprecated":false,"description":"Promise based HTTP client for the browser and node.js","devDependencies":{"bundlesize":"^0.17.0","coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.0.2","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^20.1.0","grunt-karma":"^2.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^1.0.18","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^1.3.0","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-firefox-launcher":"^1.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^1.2.0","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.7","karma-webpack":"^1.7.0","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^5.2.0","sinon":"^4.5.0","typescript":"^2.8.1","url-search-params":"^0.10.0","webpack":"^1.13.1","webpack-dev-server":"^1.14.1"},"homepage":"https://github.com/axios/axios","jsdelivr":"dist/axios.min.js","keywords":["xhr","http","ajax","promise","node"],"license":"MIT","main":"index.js","name":"axios","repository":{"type":"git","url":"git+https://github.com/axios/axios.git"},"scripts":{"build":"NODE_ENV=production grunt build","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","examples":"node ./examples/server.js","fix":"eslint --fix lib/**/*.js","postversion":"git push && git push --tags","preversion":"npm test","start":"node ./sandbox/server.js","test":"grunt test && bundlesize","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json"},"typings":"./index.d.ts","unpkg":"dist/axios.min.js","version":"0.21.1"}');
 
 /***/ }),
 

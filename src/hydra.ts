@@ -5,7 +5,10 @@
 import {AxiosRequestConfig, AxiosResponse, AxiosInstance} from 'axios';
 import axios from 'axios';
 import _ from 'lodash';
+import matchAll from 'string.prototype.matchall';
 import { shieldsIO } from './shields';
+
+matchAll.shim();
 
 //////////////////////////////////////////////////////////////////////
 // GitHub API Requests

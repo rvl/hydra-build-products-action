@@ -180,4 +180,4 @@ After testing you can [create a v1 tag](https://github.com/actions/toolkit/blob/
 
 ## CI
 
-Tests no workies: <a href="https://github.com/rvl/hydra-build-products-action/actions"><img alt="typescript-action status" src="https://github.com/rvl/hydra-build-products-action/workflows/build-test/badge.svg"></a>
+<a href="https://github.com/rvl/hydra-build-products-action/actions"><img alt="typescript-action status" src="https://github.com/rvl/hydra-build-products-action/workflows/build-test/badge.svg"></a>

@@ -1,14 +1,7 @@
-// import fs from 'fs';
-// import path from 'path';
-// import * as github from '@actions/github';
-
 import {AxiosRequestConfig, AxiosResponse, AxiosInstance} from 'axios';
 import axios from 'axios';
 import _ from 'lodash';
-import matchAll from 'string.prototype.matchall';
 import { shieldsIO } from './shields';
-
-matchAll.shim();
 
 //////////////////////////////////////////////////////////////////////
 // GitHub API Requests
@@ -238,18 +231,21 @@ async function fetchEvalHTML(hydraApi: AxiosInstance, evaluation: HydraEval): Pr
   return response.data;
 }
 
-async function scrapeBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, jobs: string[]): Promise<HydraBuilds> {
+export function scrapeEvalHTML(jobs: string[], html: string): { [jobName: string]: number; } {
+  const re = new RegExp("/build/([0-9]+)\">(" + jobs.join("|") + ")<", "g");
+  let match;
+  const builds: { [jobName: string]: number; } = {};
+  while ((match = re.exec(html)) !== null) {
+    builds[match[2]] = parseInt(match[1], 10);
+  }
+  return builds;
+}
+
+export async function scrapeBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, jobs: string[]): Promise<HydraBuilds> {
 
   const html = await fetchEvalHTML(hydraApi, evaluation);
 
-  const re = new RegExp("/build/([0-9]+)\">(" + jobs.join("|") + ")<", "g");
-
-  const buildIds: { [key: string]: number } =
-    _([...html.matchAll(re)])
-      .map(match => [match[2], parseInt(match[1], 10)])
-      .fromPairs()
-      .value();
-
+  const buildIds = scrapeEvalHTML(jobs, html);
   console.log(`Found jobs ${buildIds}`);
 
   let builds: HydraBuilds = {};

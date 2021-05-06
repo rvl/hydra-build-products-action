@@ -21,7 +21,7 @@ function makeGitHubApi(options = {}): AxiosInstance {
 //////////////////////////////////////////////////////////////////////
 // Hydra API Requests
 
-function makeHydraApi(hydraURL: string, options = {}) {
+export function makeHydraApi(hydraURL: string, options = {}) {
   const api = axios.create(_.merge({
     baseURL: hydraURL,
     headers: { "Content-Type": "application/json" },
@@ -224,10 +224,9 @@ async function findBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, 
   return builds;
 }
 
-async function fetchEvalHTML(hydraApi: AxiosInstance, evaluation: HydraEval): Promise<string> {
-  const hydraURL = hydraApi.defaults.baseURL as string;
-  const url = hydraEvalURL(hydraURL, evaluation) as string;
-  const response: AxiosResponse<string> = await hydraApi.get(url, { headers: { "Accept": "text/html" } });
+async function fetchEvalHTML(hydraApi: AxiosInstance, evalId: number): Promise<string> {
+  const url = hydraEvalIdURL(hydraApi.defaults.baseURL as string, evalId);
+  const response: AxiosResponse<string> = await axios.get(url, { headers: { "Accept": "text/html" } });
   return response.data;
 }
 
@@ -241,12 +240,11 @@ export function scrapeEvalHTML(jobs: string[], html: string): { [jobName: string
   return builds;
 }
 
-export async function scrapeBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, jobs: string[]): Promise<HydraBuilds> {
-
-  const html = await fetchEvalHTML(hydraApi, evaluation);
+export async function scrapeBuildsInEval(hydraApi: AxiosInstance, evalId: number, jobs: string[]): Promise<HydraBuilds> {
+  const html = await fetchEvalHTML(hydraApi, evalId);
 
   const buildIds = scrapeEvalHTML(jobs, html);
-  console.log(`Found jobs ${buildIds}`);
+  console.debug("Found job ids", buildIds);
 
   let builds: HydraBuilds = {};
   for (const job in buildIds) {
@@ -288,7 +286,11 @@ function buildStatus(build: HydraBuild): string {
 }
 
 function hydraEvalURL(hydraURL: string, evaluation?: HydraEval) {
-  return evaluation?.id ? `${hydraURL}eval/${evaluation.id}` : undefined;
+  return evaluation?.id ? hydraEvalIdURL(hydraURL, evaluation.id) : undefined;
+}
+
+function hydraEvalIdURL(hydraURL: string, evalId: number) {
+  return `${hydraURL}eval/${evalId}`
 }
 
 function hydraJobsetURL({ hydraURL, project, jobset }: { hydraURL: string, project?: string, jobset?: string }) {
@@ -447,8 +449,8 @@ export async function hydra(params: HydraParams): Promise<Result> {
 
   // TODO: cache info for every build in the map so that it can be
   // re-used.
-  if (_.isEmpty(builds)) {
-    builds = await scrapeBuildsInEval(hydraApi, <HydraEval>evaluation, _.map(params.downloads, d => d.job));
+  if (_.isEmpty(builds) && evaluation?.id) {
+    builds = await scrapeBuildsInEval(hydraApi, evaluation.id, _.map(params.downloads, d => d.job));
   }
 
   timings.foundBuilds = new Date();

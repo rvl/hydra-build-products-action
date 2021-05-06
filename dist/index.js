@@ -10,7 +10,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.hydra = exports.formatTimings = exports.makeBadgeURL = exports.scrapeBuildsInEval = exports.scrapeEvalHTML = void 0;
+exports.hydra = exports.formatTimings = exports.makeBadgeURL = exports.scrapeBuildsInEval = exports.scrapeEvalHTML = exports.makeHydraApi = void 0;
 const axios_1 = __importDefault(__nccwpck_require__(6545));
 const lodash_1 = __importDefault(__nccwpck_require__(250));
 const shields_1 = __nccwpck_require__(4700);
@@ -40,6 +40,7 @@ function makeHydraApi(hydraURL, options = {}) {
     });
     return api;
 }
+exports.makeHydraApi = makeHydraApi;
 function findEvalByInput(evals, repo) {
     return lodash_1.default.find(evals, e => e.jobsetevalinputs[repo.name] && e.jobsetevalinputs[repo.name].revision === repo.rev);
 }
@@ -151,10 +152,9 @@ async function findBuildsInEval(hydraApi, evaluation, jobs) {
     }
     return builds;
 }
-async function fetchEvalHTML(hydraApi, evaluation) {
-    const hydraURL = hydraApi.defaults.baseURL;
-    const url = hydraEvalURL(hydraURL, evaluation);
-    const response = await hydraApi.get(url, { headers: { "Accept": "text/html" } });
+async function fetchEvalHTML(hydraApi, evalId) {
+    const url = hydraEvalIdURL(hydraApi.defaults.baseURL, evalId);
+    const response = await axios_1.default.get(url, { headers: { "Accept": "text/html" } });
     return response.data;
 }
 function scrapeEvalHTML(jobs, html) {
@@ -167,10 +167,10 @@ function scrapeEvalHTML(jobs, html) {
     return builds;
 }
 exports.scrapeEvalHTML = scrapeEvalHTML;
-async function scrapeBuildsInEval(hydraApi, evaluation, jobs) {
-    const html = await fetchEvalHTML(hydraApi, evaluation);
+async function scrapeBuildsInEval(hydraApi, evalId, jobs) {
+    const html = await fetchEvalHTML(hydraApi, evalId);
     const buildIds = scrapeEvalHTML(jobs, html);
-    console.log(`Found jobs ${buildIds}`);
+    console.debug("Found job ids", buildIds);
     let builds = {};
     for (const job in buildIds) {
         const response = await fetchHydraBuild(hydraApi, buildIds[job]);
@@ -205,7 +205,10 @@ function buildStatus(build) {
         : (!!build.starttime ? "building" : "queued");
 }
 function hydraEvalURL(hydraURL, evaluation) {
-    return (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? `${hydraURL}eval/${evaluation.id}` : undefined;
+    return (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id) ? hydraEvalIdURL(hydraURL, evaluation.id) : undefined;
+}
+function hydraEvalIdURL(hydraURL, evalId) {
+    return `${hydraURL}eval/${evalId}`;
 }
 function hydraJobsetURL({ hydraURL, project, jobset }) {
     return (project && jobset) ? `${hydraURL}jobset/${project}/${jobset}` : undefined;
@@ -298,8 +301,8 @@ async function hydra(params) {
         || {};
     // TODO: cache info for every build in the map so that it can be
     // re-used.
-    if (lodash_1.default.isEmpty(builds)) {
-        builds = await scrapeBuildsInEval(hydraApi, evaluation, lodash_1.default.map(params.downloads, d => d.job));
+    if (lodash_1.default.isEmpty(builds) && (evaluation === null || evaluation === void 0 ? void 0 : evaluation.id)) {
+        builds = await scrapeBuildsInEval(hydraApi, evaluation.id, lodash_1.default.map(params.downloads, d => d.job));
     }
     timings.foundBuilds = new Date();
     if (lodash_1.default.isEmpty(builds) && !lodash_1.default.isEmpty(params.downloads)) {

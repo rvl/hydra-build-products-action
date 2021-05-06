@@ -228,6 +228,35 @@ async function findBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, 
   return builds;
 }
 
+async function fetchEvalHTML(hydraApi: AxiosInstance, evaluation: HydraEval): Promise<string> {
+  const hydraURL = hydraApi.defaults.baseURL as string;
+  const url = hydraEvalURL(hydraURL, evaluation) as string;
+  const response: AxiosResponse<string> = await hydraApi.get(url, { headers: { "Accept": "text/html" } });
+  return response.data;
+}
+
+async function scrapeBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, jobs: string[]): Promise<HydraBuilds> {
+
+  const html = await fetchEvalHTML(hydraApi, evaluation);
+
+  const re = new RegExp("/build/([0-9]+)\">(" + jobs.join("|") + ")<", "g");
+
+  const buildIds: { [key: string]: number } =
+    _([...html.matchAll(re)])
+      .map(match => [match[2], parseInt(match[1], 10)])
+      .fromPairs()
+      .value();
+
+  console.log(`Found jobs ${buildIds}`);
+
+  let builds: HydraBuilds = {};
+  for (const job in buildIds) {
+    const response: AxiosResponse<HydraBuild> = await fetchHydraBuild(hydraApi, buildIds[job]);
+    builds[job] = response.data;
+  }
+  return builds;
+}
+
 function hydraBuildPath(buildId: number): string {
   return `build/${buildId}`;
 }
@@ -420,7 +449,7 @@ export async function hydra(params: HydraParams): Promise<Result> {
   // TODO: cache info for every build in the map so that it can be
   // re-used.
   if (_.isEmpty(builds)) {
-    builds = await findBuildsInEval(hydraApi, <HydraEval>evaluation, _.map(params.downloads, d => d.job));
+    builds = await scrapeBuildsInEval(hydraApi, <HydraEval>evaluation, _.map(params.downloads, d => d.job));
   }
 
   timings.foundBuilds = new Date();

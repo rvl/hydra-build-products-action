@@ -112,9 +112,7 @@ async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: Axio
   const failed = statuses.difference(successful.value(), pending.value());
 
   console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
-  statuses.each(st => { if (st.state === "success" || st.state === "pending") {
-    console.log(`  ${st.state}: ${st.target_url}`);
-  } });
+  statuses.each(st => console.log(`  ${st.state}: ${st.target_url}`));
 
   // We can't simply take the latest succes status, because there are
   // sometimes "ghost" evaluations with no builds.

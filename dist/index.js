@@ -113,12 +113,18 @@ const axios_1 = __importDefault(__nccwpck_require__(6545));
 const lodash_1 = __importDefault(__nccwpck_require__(250));
 const shields_1 = __nccwpck_require__(4700);
 const github_1 = __nccwpck_require__(5928);
+const http_1 = __importDefault(__nccwpck_require__(8605));
+const https_1 = __importDefault(__nccwpck_require__(7211));
 //////////////////////////////////////////////////////////////////////
 // Hydra API Requests
 function makeHydraApi(hydraURL, options = {}) {
+    const httpAgent = new http_1.default.Agent({ keepAlive: true });
+    const httpsAgent = new https_1.default.Agent({ keepAlive: true });
     const api = axios_1.default.create(lodash_1.default.merge({
         baseURL: hydraURL,
         headers: { "Content-Type": "application/json" },
+        httpAgent,
+        httpsAgent,
     }, options));
     api.interceptors.request.use(request => {
         console.debug(`Hydra ${request.method} ${hydraURL}${request.url}`);
@@ -144,11 +150,7 @@ async function findEvalFromGitHubStatus(hydraApi, githubApi, repo, statusName, p
     const pending = statuses.filter({ state: "pending" });
     const failed = statuses.difference(successful.value(), pending.value());
     console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
-    statuses.each(st => {
-        if (st.state === "success" || st.state === "pending") {
-            console.log(`  ${st.state}: ${st.target_url}`);
-        }
-    });
+    statuses.each(st => console.log(`  ${st.state}: ${st.target_url}`));
     // We can't simply take the latest succes status, because there are
     // sometimes "ghost" evaluations with no builds.
     const getGoodEval = async (statuses) => {

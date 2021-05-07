@@ -1,22 +1,8 @@
-import {AxiosRequestConfig, AxiosResponse, AxiosInstance} from 'axios';
+import { AxiosResponse, AxiosInstance} from 'axios';
 import axios from 'axios';
 import _ from 'lodash';
 import { shieldsIO } from './shields';
-
-//////////////////////////////////////////////////////////////////////
-// GitHub API Requests
-
-function makeGitHubApi(options = {}): AxiosInstance {
-  const api = axios.create(_.merge({
-    baseURL: "https://api.github.com/",
-    headers: { "Content-Type": "application/json" },
-  }, options));
-  api.interceptors.request.use((request: AxiosRequestConfig) => {
-    console.debug(`${request.method} ${request.baseURL}${request.url}`);
-    return request;
-  });
-  return api;
-}
+import { makeGitHubApi, fetchGitHubStatus, validateRepo, GitHubRepo, GitHubStatus, ActionContext } from './github';
 
 //////////////////////////////////////////////////////////////////////
 // Hydra API Requests
@@ -27,7 +13,7 @@ export function makeHydraApi(hydraURL: string, options = {}) {
     headers: { "Content-Type": "application/json" },
   }, options));
   api.interceptors.request.use(request => {
-    console.debug("Hydra " + request.url);
+    console.debug(`Hydra ${request.method} ${hydraURL}${request.url}`);
     return request;
   });
   return api;
@@ -105,29 +91,6 @@ function sleep(ms = 0): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 };
 
-export interface GitHubStatus {
-  context: string;
-  state: string;
-  target_url: string;
-}
-
-async function fetchGitHubStatus(githubApi: AxiosInstance, { owner, name, rev}: GitHubRepo, statusName: string, previousStatus?: GitHubStatus, page?: number) {
-  if (previousStatus && previousStatus.context.startsWith(statusName)) {
-    return {
-      statuses: _([previousStatus]),
-      nextPage: null,
-    };
-  } else {
-    const q = "?per_page=100" + (page ? `&page=${page}` : "");
-    const response: AxiosResponse<GitHubStatus[]> = await githubApi.get(`repos/${owner}/${name}/commits/${rev}/statuses${q}`);
-
-    return {
-      statuses: _(response.data).filter(st => st.context.startsWith(statusName)).sortBy("updated_at").reverse(),
-      nextPage: response.headers["Link"],
-    };
-  }
-}
-
 async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: AxiosInstance, repo: GitHubRepo, statusName: string, previousStatus?: GitHubStatus, onPending: () => void = (() => undefined), page?: number): Promise<HydraEval|undefined> {
 
   const { statuses, nextPage } = await fetchGitHubStatus(githubApi, repo, statusName, previousStatus, page);
@@ -143,6 +106,9 @@ async function findEvalFromGitHubStatus(hydraApi: AxiosInstance, githubApi: Axio
   const failed = statuses.difference(successful.value(), pending.value());
 
   console.log(`Found ${statuses.size()} eval statuses matching ${statusName}:  successful=${successful.size()}  pending=${pending.size()}  failed=${failed.size()}`);
+  statuses.each(st => { if (st.state === "success" || st.state === "pending") {
+    console.log(`  ${st.state}: ${st.target_url}`);
+  } });
 
   // We can't simply take the latest succes status, because there are
   // sometimes "ghost" evaluations with no builds.
@@ -211,15 +177,24 @@ async function findBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval, 
   let builds: HydraBuilds = {};
   for (const buildId of evaluation.builds) {
     const response: AxiosResponse<HydraBuild> = await fetchHydraBuild(hydraApi, buildId);
-    const build = response.data
+    const build = response.data;
     if (_.includes(jobs, build.job)) {
       console.log(`Found job ${build.job}`);
-      builds[build.job] = build
+      builds[build.job] = build;
       if (_.size(builds) === _.size(jobs)) {
         console.log(`All jobs found`);
         break;
       }
     }
+  }
+  return builds;
+}
+
+async function fetchAllBuildsInEval(hydraApi: AxiosInstance, evaluation: HydraEval): Promise<HydraBuilds> {
+  let builds: HydraBuilds = {};
+  for (const buildId of evaluation.builds) {
+    const response: AxiosResponse<HydraBuild> = await fetchHydraBuild(hydraApi, buildId);
+    builds[response.data.job] = response.data;
   }
   return builds;
 }
@@ -304,7 +279,7 @@ async function waitForBuild(hydraApi: AxiosInstance, build: HydraBuild, buildPro
   const buildURL = hydraBuildURL(hydraApi, build.id);
   const job = fullJobName(build);
 
-  console.log(`${buildURL} (${job}) is ${buildStatus(build)}.`);
+  console.log(`${job} build ${build.id} is ${buildStatus(build)}.`);
 
   if (build.finished) {
     if (build.buildstatus === 0) {
@@ -357,30 +332,18 @@ export interface HydraParams {
   hydraURL: string;
   requestOptions?: { [key: string]: any };
   jobs: string[];
-  spec: Spec;
+  actionContext: ActionContext;
   downloads: Download[];
   statusName: string;
   requiredJob?: string;
   project?: string;
   jobset?: string;
+  badge: boolean;
   previous?: {
     status?: GitHubStatus;
     evaluation?: HydraEval;
     builds?: HydraBuilds;
   };
-}
-
-export interface GitHubRepo {
-  owner: string;
-  name: string;
-  rev: string;
-};
-
-export interface Spec {
-  repo: GitHubRepo;
-  previousStatus?: GitHubStatus;
-  eventName?: string;
-  payload?: any;
 }
 
 export interface Download {
@@ -395,7 +358,7 @@ export interface Result {
   buildURLs: string[];
   buildProductURLs: string[];
   timings: Timings;
-  badge: string;
+  badge?: string;
 }
 
 export interface Timings {
@@ -410,15 +373,7 @@ export function formatTimings(timings: Timings) {
   return _.mapValues(timings, d => d?.toISOString());
 }
 
-function validateRepo(repo: GitHubRepo): void {
-  for (const what of ["owner", "name", "rev"]) {
-    if (!(<any>repo)[what]) {
-      throw new Error(`${what} missing from github payload`);
-    }
-  }
-}
-
-export async function hydra(params: HydraParams): Promise<Result> {
+export async function hydra(params: HydraParams, loadCache?: (evalId: number, params: HydraParams) => Promise<void>): Promise<Result> {
   const timings: Timings = { actionStarted: new Date() };
   const onPending = () => {
     timings.ciStatusCreated = timings.ciStatusCreated || new Date();
@@ -430,8 +385,8 @@ export async function hydra(params: HydraParams): Promise<Result> {
   let evaluation = params.previous?.evaluation;
 
   if (_.isEmpty(evaluation)) {
-    validateRepo(params.spec.repo);
-    evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, params.spec.repo, params.statusName, params.previous?.status, onPending);
+    validateRepo(params.actionContext.repo);
+    evaluation = await findEvalFromGitHubStatus(hydraApi, githubApi, params.actionContext.repo, params.statusName, params.previous?.status, onPending);
     if (!evaluation) {
       const msg = "Couldn't get eval from GitHub status API.";
       console.error(msg);
@@ -443,6 +398,10 @@ export async function hydra(params: HydraParams): Promise<Result> {
 
   timings.evaluated = new Date();
 
+  if (loadCache && evaluation) {
+    await loadCache(evaluation.id as number, params);
+  }
+
   let builds = params.previous?.builds
     || await fetchBuildFromCIStatus(hydraApi, params.previous?.status)
     || {};
@@ -450,7 +409,11 @@ export async function hydra(params: HydraParams): Promise<Result> {
   // TODO: cache info for every build in the map so that it can be
   // re-used.
   if (_.isEmpty(builds) && evaluation?.id) {
-    builds = await scrapeBuildsInEval(hydraApi, evaluation.id, _.map(params.downloads, d => d.job));
+    if (params.badge) {
+      builds = await fetchAllBuildsInEval(hydraApi, evaluation);
+    } else {
+      builds = await scrapeBuildsInEval(hydraApi, evaluation.id, _.map(params.downloads, d => d.job));
+    }
   }
 
   timings.foundBuilds = new Date();

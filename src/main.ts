@@ -3,34 +3,11 @@
 // Adapted from cardano-wallet/scripts/travis-download-builds.js
 
 import * as core from '@actions/core'
-import * as github from '@actions/github';
+import * as cache from '@actions/cache';
 import _ from 'lodash';
 
-import {hydra, Spec, Result, Download, formatTimings, HydraEval, HydraBuilds} from './hydra'
-
-//////////////////////////////////////////////////////////////////////
-// GitHub event context
-
-function getActionPayload(): Spec {
-  const eventName = github?.context?.eventName;
-  const payload = github?.context?.payload;
-
-  const statusEvent = eventName === "status" ? payload : undefined;
-  const pushEvent = eventName === "push" ? payload : undefined;
-  const tagEvent = eventName === "push" && payload?.ref?.startsWith("refs/tags/") ? payload : undefined;
-  const prEvent = eventName === "pull_request" ? payload : undefined;
-
-  return {
-    repo: {
-      owner: process.env.REPO_OWNER || payload?.repository?.owner?.login || "",
-      name: process.env.REPO_NAME || payload?.repository?.name || "",
-      rev: process.env.COMMIT || tagEvent?.head_commit?.id || pushEvent?.after || prEvent?.pull_request?.head?.sha || statusEvent?.sha || "",
-    },
-    previousStatus: statusEvent ? { context: statusEvent.context, state: statusEvent.state, target_url: statusEvent.target_url } : undefined,
-    eventName,
-    payload,
-  };
-}
+import {hydra, Result, Download, formatTimings, HydraEval, HydraBuilds, HydraParams} from './hydra'
+import {getActionPayload} from './github';
 
 //////////////////////////////////////////////////////////////////////
 // Action Inputs
@@ -50,6 +27,7 @@ interface Params {
   project?: string;
   jobset?: string;
   requiredJob?: string;
+  badge: boolean;
 }
 
 function getActionInputs(): Params {
@@ -63,6 +41,7 @@ function getActionInputs(): Params {
   };
   const str = (s: string) => s;
   const optstr = (s: string) => s ? s : undefined;
+  const flag = (s: string) => !!s;
 
   const actionInputs = {
     hydra: {
@@ -96,6 +75,10 @@ function getActionInputs(): Params {
     builds: {
       env: "HYDRA_BUILDS_JSON",
       parse: json
+    },
+    badge: {
+      env: "DO_BADGE",
+      parse: flag
     },
   };
 
@@ -139,8 +122,43 @@ function makeActionOutputs(res: Result): Outputs {
 
     evaluation: json(res.evaluation),
     builds: json(res.builds),
-    timings: json(formatTimings(res.timings))
+    timings: json(formatTimings(res.timings)),
+    badge: res.badge || "",
   };
+}
+
+//////////////////////////////////////////////////////////////////////
+// Caching
+
+const cacheDir = ".hydra-build-products-action";
+const cachePaths = [ `${cacheDir}/*` ];
+
+function makeCachekey(evalId: number): string {
+ return `hydra-eval-id-${evalId}`;
+}
+
+async function saveCache(res: Result) {
+  const key = res.evaluation ? makeCachekey(res.evaluation.id) : undefined;
+  if (key) {
+    writeCacheFiles(res);
+    const cacheId = await cache.saveCache(cachePaths, key);
+  };
+}
+
+async function restoreCache(evalId: number, params: HydraParams) {
+  // Maybe use (actionContext: ActionContext, statuses: GitHubStatus[])
+  const key = makeCachekey(evalId);
+  const restoreKeys = [ 'hydra-eval-id-', /* 'hydra-eval-rev-' */ ];
+  const cachekey = await cache.restoreCache(cachePaths, key, restoreKeys);
+  readCacheFiles(params);
+}
+
+function writeCacheFiles(res: Result) {
+  // TODO
+}
+
+function readCacheFiles(params: HydraParams) {
+  // TODO
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -153,8 +171,8 @@ async function run(): Promise<void> {
 
     const params = getActionInputs();
 
-    const spec = getActionPayload();
-    console.debug("GitHub spec", spec);
+    const actionContext = getActionPayload();
+    console.debug("GitHub action context", actionContext);
 
     const downloads: Download[] = _.map(params.jobs, (name: string) => {
       return { job: name, buildProducts: null };
@@ -163,20 +181,22 @@ async function run(): Promise<void> {
     const res = await hydra({
       hydraURL: params.hydra,
       jobs: params.jobs,
-      spec,
+      actionContext,
       downloads,
       statusName: params.statusName,
       requiredJob: params.requiredJob,
       project: params.project,
       jobset: params.jobset,
+      badge: params.badge,
       previous: {
-        status: spec.previousStatus,
+        status: actionContext.previousStatus,
         evaluation: params.evaluation,
         builds: params.builds,
       },
-    });
+    }, restoreCache);
 
     setActionOutputs(res);
+    saveCache(res);
   } catch (error) {
     core.setFailed(error.message)
   }

@@ -34,6 +34,12 @@ inputs:
     description: 'Previously found Hydra builds as JSON'
     required: false
     default: ''
+  badge:
+    description: |-
+      Set to non-empty to create CI status badge. This takes longer
+      because it needs to query every build in the evaluation.
+    required: false
+    default: ''
 
 outputs:
   evalURL:
@@ -50,7 +56,9 @@ outputs:
   timings:
     description: 'JSON object with build time observations'
   badge:
-    description: 'URL of a shields.io badge for the build'
+    description: |-
+      URL of a shields.io badge for the build, if the `badge`,
+      `project`, and `jobset` inputs were set.
 
 runs:
   using: 'node12'

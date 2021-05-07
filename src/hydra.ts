@@ -3,14 +3,20 @@ import axios from 'axios';
 import _ from 'lodash';
 import { shieldsIO } from './shields';
 import { makeGitHubApi, fetchGitHubStatus, validateRepo, GitHubRepo, GitHubStatus, ActionContext } from './github';
+import http from 'http';
+import https from 'https';
 
 //////////////////////////////////////////////////////////////////////
 // Hydra API Requests
 
 export function makeHydraApi(hydraURL: string, options = {}) {
+  const httpAgent = new http.Agent({ keepAlive: true });
+  const httpsAgent = new https.Agent({ keepAlive: true });
   const api = axios.create(_.merge({
     baseURL: hydraURL,
     headers: { "Content-Type": "application/json" },
+    httpAgent,
+    httpsAgent,
   }, options));
   api.interceptors.request.use(request => {
     console.debug(`Hydra ${request.method} ${hydraURL}${request.url}`);
